@@ -46,6 +46,19 @@ def main(path):
     print("  P(D | pure alive tags) {:.1%}   P(D | set-piece pre-restart) {:.1%}   "
           "possessions < 2 s: {:.0%}".format((pred[alive] == "D").mean(), (pred[dead] == "D").mean(),
                                             (tl < 2).mean()))
+    exp = np.full(n, "", dtype="<U1")
+    for i in inst:
+        if i["team"] is None:
+            continue
+        if i["code"] in tagging.OFFENSIVE:
+            t = i["team"]
+        elif i["code"] in tagging.DEFENSIVE:
+            t = "A" if i["team"] == "H" else "H"
+        else:
+            continue
+        exp[max(0, i["start"]):min(n, i["end"])] = t
+    m = gr & (exp != "") & np.isin(pred, ["H", "A"])
+    print("  team agreement with Smart Tagging phase sides: {:.1%}".format((pred[m] == exp[m]).mean()))
     gt = pd.read_csv(os.path.join(ROOT, "evaluation", "gt", "BAR-ATH_possession_gt_public.csv"))["label"].values
     lo, hi = 11185, 18685
     wg = gt[lo:hi]

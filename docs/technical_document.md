@@ -34,15 +34,23 @@ and by where the ball went next:
 |---|---|---|
 | controlled | contact lasting at least 2 s | strong, for that side |
 | pass | shorter contact whose next contact is a team-mate within 4 s, ball not lost for more than 1 s in between | strong, for that side, over the contact and the flight |
-| touch | shorter contact whose next contact is an opponent | light credit only (0.58) |
+| touch | shorter contact whose next contact is an opponent | none |
 | unresolved | shorter contact followed by a lost ball or nothing for 4 s | none |
 
 On the public window, episodes classed as controlled or pass agreed with the ground truth side
-in about 90% of cases, touches in about two thirds, and unresolved episodes in fewer than half,
-which is why the last two carry little or no weight. A down-weighted per-frame contact term
-(weight 0.5 in log-odds, Gaussian control radius 1.5 m, floor weight 0.25 per side so that a
-loose ball 3 m from everyone says nothing) is added so that sustained but untidy contact still
-counts.
+in about 90% of cases, touches in about two thirds (almost always because that side already had
+the ball), and unresolved episodes in fewer than half, which is why the last two carry no
+weight. A down-weighted per-frame contact term (weight 0.5 in log-odds, Gaussian control radius
+1.5 m, floor weight 0.25 per side so that a loose ball 3 m from everyone says nothing) is added
+so that sustained but untidy contact still counts; inside a touch episode that term is muted to
+0.1 and inside an unresolved one to 0.3, so a touch that went straight to the opponent can never
+accumulate into a change of possession.
+
+Two further sources name the side at a restart. A kick out of a stoppage (ball leaving a
+player's feet after two seconds of high dead-ball probability) credits the kicker's side for
+0.8 s, because every restart begins a possession for the restarting side. The Smart Tagging
+ATTACKING and DEFENSIVE TRANSITION tags credit the side that gained the ball for 3 s after the
+tag starts, at 0.5 nats per frame.
 
 ### 1.2 Dead ball
 
@@ -56,16 +64,26 @@ Four cues feed the dead-ball probability of a frame:
   phases, a threshold of 0.05 separates 70% of dead frames from 84% of alive frames. A logistic
   ramp around that value maps the share to `P(D)` between 0.12 and 0.60.
 - **Ball at rest** for about two seconds: `P(D) >= 0.6`.
+- **Ignored ball.** Slow (under 3 m/s) and more than 3 m from every player for two seconds:
+  `P(D) >= 0.6`. In play a loose ball is chased; a ball nobody goes to is waiting for a restart.
+- **Ball walked along a line.** Tracked within 1 m of a touchline or goal line, slow, at a
+  player's feet or in his hands: `P(D) >= 0.55`. That is a throw-in or goal kick being set up.
 - **Restart hold.** Once the ball is tracked out, or vanishes within 2 m of a line while
-  travelling towards it, the ball stays dead until the restart: the first sustained kick in
-  bounds above 5 m/s, or the players clearly running again, never within 3 s of going out and
-  never longer than 25 s.
+  travelling towards it, the ball stays dead (`P(D) >= 0.5`) until the restart. The restart is
+  a kick from a player's feet with the ball in bounds, and only if play follows it: a ball
+  kicked back towards the spot and then left alone within 4 s was a retrieval, not a restart.
+  While the ball is lost, the players clearly running again also ends the hold. A hold never
+  ends within 3 s of the ball going out, never lasts beyond 25 s, and never runs past either
+  published kick-off frame.
 
-Smart Tagging adds hard windows: the 3.5 s before each tagged set piece are dead, the 1.5 s after
-it favour the tagged restart side, and each GOALS tag is dead from its start until the kick-off
-inside it. Dead-ball spells shorter than 2 s are folded into the spell that follows, because a
-stoppage cannot be that short. The second half is graded from frame 110,808 but kicks off at
-113,742, so those frames are written as `D`.
+Smart Tagging adds hard windows. Kick-off tags are 5 s windows starting about 3.5 s before the
+kick; every other set-piece tag is a 35 s window with the restart somewhere inside it, so the
+restart is taken as the first kick from a player's feet in the window, the 15 s before it are
+dead, and the 0.8 s after it favour the tagged restart side. Each GOALS tag is dead from its
+start until the kick-off inside it. The two published kick-off frames (11,185 and 113,742) mark
+the ball in play. Dead-ball spells shorter than 2 s are folded into the spell that follows,
+because a stoppage cannot be that short. The second half is graded from frame 110,808 but kicks
+off at 113,742, so those frames are written as `D`.
 
 ### 1.3 When the ball is lost
 
@@ -82,7 +100,7 @@ deliberately small so that they can only decide a long, otherwise silent stretch
 Switch costs are fixed at 15 nats for a change of side and 25 nats for entering or leaving `D`.
 With strong episode evidence worth about 2 nats per frame, a change of side needs roughly 0.3 s
 of clean controlled contact or 1.5 s of untidy contact; a stoppage needs about one second of
-dead-ball evidence. The whole pipeline runs in about 10 s on a laptop.
+dead-ball evidence. The whole pipeline runs in about 15 s on a laptop.
 
 ## 2. Assets used, and dropped
 
@@ -94,8 +112,8 @@ dead-ball evidence. The whole pipeline runs in about 10 s on a laptop.
   found the broadcast runs at a constant offset from the tactical video within each half
   (+4014 frames in the first half, +26920 in the second, with a few frames of jitter) and
   aligned 39% of its frames to within 1 m. The broadcast ball, however, is mostly visible when
-  the tactical ball is too; it raised ball coverage on graded frames from 59.3% to 61.1%, so it
-  was not worth a second input path.
+  the tactical ball is too: used as a gap filler it covers 1.8% of graded frames and changed no
+  check for the better, so the option (`possession/broadcast.py`) ships switched off.
 - **Video** (either feed): not used. No GPU was available, and the central difficulty is the
   semantics of control, not detection.
 
@@ -122,13 +140,17 @@ alignment and to check that episode classes mean what we thought; no threshold w
 | submission | macroF1 | spellF1 | possessions (truth 17) |
 |---|---|---|---|
 | `baseline_smooth50` (official floor) | 0.6207 | 0.3256 | 26 |
-| ours | 0.8442 | 0.5032 | 14 |
+| ours | 0.8952 | 0.5143 | 11 |
 
-Across the full match our file has about 235 possessions of mean 16 s, 45% of graded frames
-dead, and a 63% home share of alive time. Two label-free checks: inside Metrica's own tagged
-build-up and progression phases we label 9% of frames dead, and inside the 3 s before each
-tagged set piece we label 91% dead; where a tagged phase names a side and we say the ball is
-alive, we name the same side 84% of the time (the baseline: 67%).
+With only 17 possessions in the window, spellF1 differences below about 0.4 are inside the
+bootstrap noise band, so the second column is encouraging rather than conclusive; the macroF1
+gain, and in particular the dead-ball F1 of 0.93, is well outside the noise.
+
+Across the full match our file has 200 possessions of mean 16 s, 49% of graded frames dead, and
+a 63% home share of alive time. Three label-free checks: inside Metrica's own tagged build-up,
+progression and transition phases we label 11% of frames dead; inside the 3 s before each tagged
+set piece we label 95% dead; and where a tagged phase names a side and we say the ball is alive,
+we name the same side 84% of the time (the baseline: 67%).
 
 ## 6. Limitations
 

@@ -15,7 +15,7 @@ sys.path.insert(0, ROOT)
 from games import GAME, GAMES, half_video_blocks  # noqa: E402
 from possession.atd import load_tracking  # noqa: E402
 from possession import features, tagging  # noqa: E402
-from possession.model import Params, emissions, switch_costs, viterbi, merge_short_dead  # noqa: E402
+from possession.model import Params, emissions, switch_costs, viterbi, merge_short_dead, KICKOFF_FRAMES  # noqa: E402
 
 RESULTS_DIR = os.path.join(ROOT, "evaluation", "results")
 KICKOFF_2ND = 113742     # published in DATA.md / FAQ.md
@@ -32,17 +32,23 @@ def build(params=Params, verbose=True):
     g = GAMES[GAME]
     n, fps, pitch = g["n_video_frames"], g["fps"], g["pitch"]
     trk = load_tracking()
-    feat = features.compute(trk, pitch, fps)
+    ball_fill = None
+    if params.use_broadcast:
+        from possession.broadcast import broadcast_ball
+        ball_fill, _ = broadcast_ball()
+    feat = features.compute(trk, pitch, fps, ball_fill=ball_fill, kickoffs=KICKOFF_FRAMES)
+    if verbose and ball_fill is not None:
+        print("broadcast ball fills {:.1%} of graded frames".format(feat["from_fill"][graded_mask(n)].mean()))
     graded = graded_mask(n)
     inst = tagging.load_instances()
     prior = tagging.team_prior(inst, n)
     log_e, diag = emissions(feat, prior, tagging.set_pieces(inst), tagging.goals(inst),
-                            graded, n, fps, params)
+                            tagging.transitions(inst), graded, n, fps, params)
     cost_team, cost_dead = switch_costs(log_e, feat, graded, fps, params)
     if verbose:
         print("shape logit k {:.3f}  pseudo-label agreement {:.1%} on {} frames".format(
             diag["shape_k"], diag["shape_acc"], diag["shape_n"]))
-        print("episodes: {}".format(diag["episodes"]))
+        print("episodes: {}  restart kicks: {}".format(diag["episodes"], diag["restart_kicks"]))
         print("switch costs: team {:.1f} nats  dead {:.1f} nats   mean P(D) graded {:.2f}  hold share {:.1%}".format(cost_team, cost_dead, diag["pd_mean_graded"], diag["hold_share"]))
     path = merge_short_dead(viterbi(log_e, cost_team, cost_dead), fps, params)
 

@@ -38,8 +38,14 @@ def missing_stretches(mask):
     return list(zip(np.flatnonzero(edges == 1).tolist(), np.flatnonzero(edges == -1).tolist()))
 
 
-def compute(trk, pitch, fps):
+def compute(trk, pitch, fps, ball_fill=None, kickoffs=()):
+    """ball_fill: optional (n, 2) second ball track used only where the primary one is NaN.
+    kickoffs: published kick-off frames; a restart hold never runs past one."""
     ball = trk["ball"]
+    from_fill = np.zeros(len(ball), dtype=bool)
+    if ball_fill is not None:
+        from_fill = np.isnan(ball[:, 0]) & ~np.isnan(ball_fill[:, 0])
+        ball = np.where(from_fill[:, None], ball_fill, ball)
     players = trk["players"]
     team = trk["team"]
     speed = trk["speed"]
@@ -115,15 +121,55 @@ def compute(trk, pitch, fps):
         if out_of_bounds[last] or (np.isfinite(outward[last]) and outward[last] > 1.0):
             lost_near_line[start:stop] = True
 
+    # Kicks: the ball gains more than 4 m/s within five frames, ending above 6 m/s, while at a
+    # player's feet. The kicker's side is the nearest side three frames before the take-off.
+    vb = np.nan_to_num(v_ball_s, nan=np.nan)
+    takeoff = np.zeros(n, dtype=bool)
+    takeoff[5:] = (vb[5:] > 6.0) & (vb[5:] - vb[:-5] > 4.0)
+    kick_team = np.full(n, -1, dtype=np.int8)
+    for k in np.flatnonzero(takeoff):
+        j = max(0, k - 3)
+        dh, da = d_home[j], d_away[j]
+        if np.isfinite(dh) and dh < 2.0 and (not np.isfinite(da) or dh <= da):
+            kick_team[k] = HOME
+        elif np.isfinite(da) and da < 2.0:
+            kick_team[k] = AWAY
+
+    # Ignored ball: slow and more than 3 m from every player for two seconds. In play a loose
+    # ball is chased; a ball nobody goes to is waiting for a restart.
+    d_min_all = np.fmin(np.nan_to_num(d_home, nan=np.inf), np.nan_to_num(d_away, nan=np.inf))
+    ignored_now = np.where(visible, ((np.nan_to_num(v_ball_s, nan=9.0) < 3.0) & (d_min_all > 3.0)).astype(float), np.nan)
+    ignored = np.nan_to_num(moving_mean(ignored_now, fps), nan=0.0) > 0.9
+
     # Restart hold: once the ball has gone out (tracked outside the lines, or lost at a line) it
-    # stays dead until it is put back into play. The restart is the first sustained kick -- the
-    # ball tracked in bounds above 5 m/s for three frames -- or, failing that, the players
-    # clearly running again. A restart cannot happen within 3 s of the ball going out, and the
-    # hold gives up after 15 s.
+    # stays dead until it is put back into play. The restart is the first kick from a player's
+    # feet with the ball in bounds -- a ball thrown back onto the pitch from the sidelines is
+    # not a restart -- or, failing that, the players clearly running again while the ball is
+    # lost. A restart cannot happen within 3 s of the ball going out, and the hold gives up
+    # after 25 s.
+    # A restart is also any sustained fast ball in bounds that left a player's feet: the first
+    # frame of a fast run with a player within 2.5 m just before it. A ball thrown back onto
+    # the pitch from the sidelines starts fast with nobody tracked near it.
     fast = visible & ~out_of_bounds & (np.nan_to_num(v_ball_s, nan=0.0) > 5.0)
-    kicked = fast.copy()
-    kicked[2:] &= fast[1:-1] & fast[:-2]
-    running = np.nan_to_num(frac_run_s, nan=0.0) > 0.2
+    fast_sustained = fast.copy()
+    fast_sustained[2:] &= fast[1:-1] & fast[:-2]
+    run_start = fast_sustained.copy()
+    run_start[1:] &= ~fast_sustained[:-1]
+    left_feet = np.zeros(n, dtype=bool)
+    for f0 in np.flatnonzero(run_start):
+        if d_min_all[max(0, f0 - 5):f0 + 1].min() < 2.5:
+            left_feet[f0] = True
+    kicked = ((kick_team >= 0) | left_feet) & ~out_of_bounds
+    # A kick only restarts play if play follows: a ball kicked back towards the spot and then
+    # left alone (ignored within the next 4 s) was a retrieval, not a restart.
+    ign_cum = np.concatenate(([0], np.cumsum(ignored)))
+    ahead = 4 * fps
+    idx = np.arange(n)
+    ignored_ahead = (ign_cum[np.minimum(n, idx + ahead)] - ign_cum[idx]) > 0
+    kicked_release = kicked & ~ignored_ahead
+    # Players running only ends the hold while the ball is lost: with the ball in sight and still
+    # being carried to the line, players jogging into position is part of the stoppage.
+    running = (np.nan_to_num(frac_run_s, nan=0.0) > 0.2) & ~visible
     trigger = out_of_bounds | lost_near_line
     hold = np.zeros(n, dtype=bool)
     min_hold, timeout = 3 * fps, 25 * fps
@@ -131,12 +177,26 @@ def compute(trk, pitch, fps):
     while t < n:
         if trigger[t]:
             stop = min(n, t + timeout)
-            release = np.flatnonzero((kicked | running)[t + min_hold:stop])
+            release = np.flatnonzero((kicked_release | running)[t + min_hold:stop])
             stop = t + min_hold + int(release[0]) if len(release) else stop
             hold[t:stop] = True
             t = stop
         else:
             t += 1
+    for kf in kickoffs:
+        if 0 < kf < n and hold[kf]:
+            end = kf
+            while end < n and hold[end]:
+                end += 1
+            hold[kf:end] = False
+
+    # Ball carried along a line: tracked within 1 m of a touchline or goal line, slow, at a
+    # player's feet or in his hands. In play a ball is never walked along the line; before a
+    # throw-in or goal kick it always is.
+    near_line = np.minimum.reduce([ball[:, 0], length - ball[:, 0], ball[:, 1], width - ball[:, 1]])
+    d_min = np.fmin(np.nan_to_num(d_home, nan=np.inf), np.nan_to_num(d_away, nan=np.inf))
+    line_carry = (visible & (np.abs(near_line) < 1.0) & (np.nan_to_num(v_ball_s, nan=9.0) < 2.5)
+                  & (d_min < 1.5))
 
     return {
         "visible": visible, "oob": out_of_bounds,
@@ -146,4 +206,6 @@ def compute(trk, pitch, fps):
         "rest_frac": rest_frac,
         "shape": shape_s, "area": area_s,
         "lost_near_line": lost_near_line, "hold": hold,
+        "line_carry": line_carry, "kick_team": kick_team, "from_fill": from_fill,
+        "ignored": ignored, "kicked": kicked,
     }

@@ -35,7 +35,7 @@ class EpisodeParams:
     max_lost_s = 1.0      # ball may vanish this long inside a flight and still link
     strong = 0.88         # home share for strong evidence (or 1 - strong for away)
     medium = 0.50         # unresolved contacts are no better than a coin flip against the truth
-    light = 0.58          # a touch is usually by the side already in possession, so a little credit
+    light = 0.50          # a touch never changes possession on its own
     neutral = 0.50
 
 
@@ -100,10 +100,15 @@ def classify(eps, visible, fps, p=EpisodeParams):
     return out
 
 
+KIND_CODE = {"controlled": 1, "pass": 2, "touch": 3, "unresolved": 4}
+
+
 def home_share(feat, inplay, fps, p=EpisodeParams):
-    """(n,) P(home has the ball | tracking) from the episode rules, 0.5 where nothing is known."""
+    """(share, counts, episodes, kind): share is (n,) P(home has the ball | tracking) from the
+    episode rules, 0.5 where nothing is known; kind is (n,) int8 with KIND_CODE per frame."""
     n = len(inplay)
     share = np.full(n, p.neutral)
+    kind_of = np.zeros(n, dtype=np.int8)
     team = contact_team(feat, inplay, p)
     eps = classify(episodes_from(team, p), feat["visible"], fps, p)
     counts = {"controlled": 0, "pass": 0, "touch": 0, "unresolved": 0}
@@ -112,4 +117,5 @@ def home_share(feat, inplay, fps, p=EpisodeParams):
         level = {"controlled": p.strong, "pass": p.strong, "touch": p.light,
                  "unresolved": p.medium}[kind]
         share[s:until] = level if k == HOME else 1.0 - level
-    return share, counts, eps
+        kind_of[s:until] = KIND_CODE[kind]
+    return share, counts, eps, kind_of

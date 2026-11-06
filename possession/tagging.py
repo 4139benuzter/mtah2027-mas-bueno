@@ -82,6 +82,19 @@ def set_pieces(instances):
             for i in instances if i["code"] == "set pieces"]
 
 
+def transitions(instances):
+    """[(start, end, gaining_team)] from ATTACKING / DEFENSIVE TRANSITION tags."""
+    out = []
+    for i in instances:
+        if i["team"] is None:
+            continue
+        if i["code"] == "attacking transition":
+            out.append((i["start"], i["end"], i["team"]))
+        elif i["code"] == "defensive transition":
+            out.append((i["start"], i["end"], "A" if i["team"] == "H" else "H"))
+    return out
+
+
 def goals(instances):
     return [(i["start"], i["end"], i["team"]) for i in instances if i["code"] == "goals"]
 

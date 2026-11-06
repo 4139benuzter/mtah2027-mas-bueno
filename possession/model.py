@@ -19,13 +19,14 @@ from .episodes import home_share
 
 H, A, D = 0, 1, 2
 N_STATES = 3
+KICKOFF_FRAMES = (11185, 113742)   # published in DATA.md / FAQ.md: boundaries, not labels
 
 
 class Params:
     p_dead_floor = 0.08      # dead-ball probability floor during visible play
     oob_dead = 0.90          # P(D) when the ball is tracked outside the pitch
     rest_dead = 0.60         # P(D) when the ball has been at rest for ~2 s
-    hold_dead = 0.60         # P(D) between the ball going out and the restart kick
+    hold_dead = 0.50         # P(D) between the ball going out and the restart kick; clear play overrides it
     run_dead_lo = 0.12       # P(D) when plenty of players are running
     run_dead_hi = 0.60       # P(D) when nobody is running
     run_threshold = 0.05     # share of tracked players above 2 m/s; trough of the histogram
@@ -33,15 +34,26 @@ class Params:
     shape_weight = 0.15      # scale of the team-shape log-odds while the ball is lost
     shape_weight_visible = 0.03  # ... and while it is visible
     tag_weight = 0.05        # strength of the Smart Tagging team prior (log-odds units)
-    restart_lead_s = 3.5     # a set-piece tag starts ~3.5 s before the restart
+    restart_lead_s = 3.5     # a kick-off tag starts ~3.5 s before the restart
+    setpiece_dead_cap_s = 15 # at most this much of a set-piece window before the restart is forced dead
     sigma_control = 1.5      # m, per-frame contact radius
     eps = 0.25               # floor weight for each team in the per-frame term
     v_rel_slack = 2.0        # m/s
     v_rel_scale = 4.0        # m/s
     contact_weight = 0.5     # weight of the per-frame contact term against the episode term
+    contact_weight_touch = 0.1       # ... inside a touch episode
+    contact_weight_unresolved = 0.3  # ... inside an unresolved episode
+    use_broadcast = False    # broadcast fill evaluated and dropped: no gain on any check
     switch_team = 15.0       # nats
     switch_dead = 25.0       # nats
     min_dead_s = 2.0         # dead-ball spells shorter than this are not stoppages
+    carry_dead = 0.55        # P(D) while the ball is walked along a line
+    ignored_dead = 0.60      # P(D) while a slow ball sits far from everyone
+    restart_pd = 0.45        # mean P(D) over the 2 s before a kick for it to count as a restart
+    restart_weight = 1.5     # nats per frame for the restarting side ...
+    restart_boost_s = 0.8    # ... for this long after the kick
+    transition_s = 3.0       # seconds after a TRANSITION tag start that favour the gaining side
+    transition_weight = 0.5  # nats per frame
 
 
 def fit_shape_logit(feat, graded):
@@ -66,7 +78,7 @@ def fit_shape_logit(feat, graded):
     return float(k), float(acc), int(clear.sum())
 
 
-def emissions(feat, tag_prior, set_pieces, goals, graded, n, fps, p=Params):
+def emissions(feat, tag_prior, set_pieces, goals, transitions, graded, n, fps, p=Params):
     """(n, 3) log-probabilities, plus a dict of diagnostics."""
     visible, oob = feat["visible"], feat["oob"]
     d_home, d_away = feat["d_home"], feat["d_away"]
@@ -82,11 +94,13 @@ def emissions(feat, tag_prior, set_pieces, goals, graded, n, fps, p=Params):
     pd = np.where(rest > 0.9, np.maximum(pd, p.rest_dead), pd)
     pd = np.where(feat["hold"], np.maximum(pd, p.hold_dead), pd)
     pd = np.where(oob, np.maximum(pd, p.oob_dead), pd)
+    pd = np.where(feat["line_carry"], np.maximum(pd, p.carry_dead), pd)
+    pd = np.where(feat["ignored"], np.maximum(pd, p.ignored_dead), pd)
     v_ball = np.nan_to_num(feat["v_ball_s"], nan=0.0)
 
     # --- team split: control episodes and their outcomes (possession/episodes.py), plus a
     # down-weighted per-frame contact term so sustained but untidy contact still counts ------
-    share_ep, ep_counts, _ = home_share(feat, inplay, fps)
+    share_ep, ep_counts, _, kind_of = home_share(feat, inplay, fps)
     c_home = np.exp(-(np.nan_to_num(d_home, nan=1e3) / p.sigma_control) ** 2)
     c_away = np.exp(-(np.nan_to_num(d_away, nan=1e3) / p.sigma_control) ** 2)
     v_ball = np.nan_to_num(feat["v_ball_s"], nan=0.0)
@@ -94,7 +108,12 @@ def emissions(feat, tag_prior, set_pieces, goals, graded, n, fps, p=Params):
     rel_away = np.maximum(0.0, v_ball - np.nan_to_num(feat["v_away"], nan=0.0) - p.v_rel_slack)
     w_h = np.where(inplay, p.eps + c_home * np.exp(-(rel_home / p.v_rel_scale) ** 2), 1.0)
     w_a = np.where(inplay, p.eps + c_away * np.exp(-(rel_away / p.v_rel_scale) ** 2), 1.0)
-    logit = np.log(share_ep / (1 - share_ep)) + p.contact_weight * np.log(w_h / w_a)
+    # The per-frame term is muted inside episodes whose outcome says the contact was not
+    # control: a touch that went straight to the opponent must not accumulate into a switch.
+    cw = np.full(n, p.contact_weight)
+    cw[kind_of == 3] = p.contact_weight_touch
+    cw[kind_of == 4] = p.contact_weight_unresolved
+    logit = np.log(share_ep / (1 - share_ep)) + cw * np.log(w_h / w_a)
     share_h = 1.0 / (1.0 + np.exp(-logit))
 
     e = np.empty((n, N_STATES))
@@ -110,6 +129,30 @@ def emissions(feat, tag_prior, set_pieces, goals, graded, n, fps, p=Params):
     log_e[:, H] += 0.5 * w_shape * shape_llr
     log_e[:, A] -= 0.5 * w_shape * shape_llr
 
+    # --- restarts: the side that kicks the ball out of a stoppage has possession ---------------
+    pd_cum = np.concatenate(([0.0], np.cumsum(pd)))
+    look = 2 * fps
+    boost = int(round(p.restart_boost_s * fps))
+    n_restart_kicks = 0
+    for kf in np.flatnonzero(feat["kick_team"] >= 0):
+        if kf < look:
+            continue
+        if (pd_cum[kf] - pd_cum[kf - look]) / look > p.restart_pd:
+            t = H if feat["kick_team"][kf] == 0 else A
+            # takeoff is detected five frames after the ball leaves the foot: start there
+            log_e[max(0, kf - 5):kf - 5 + boost, t] += p.restart_weight
+            n_restart_kicks += 1
+
+    # --- the two published kick-offs: the ball is in play from that frame -------------------
+    for kf in KICKOFF_FRAMES:
+        log_e[kf:kf + 2 * fps, H] += 2.0
+        log_e[kf:kf + 2 * fps, A] += 2.0
+
+    # --- Smart Tagging transitions: the gaining side, for a few seconds -------------------
+    for start, end, team in transitions:
+        a, b = max(0, start), min(n, start + int(round(p.transition_s * fps)))
+        log_e[a:b, H if team == "H" else A] += p.transition_weight
+
     # --- Smart Tagging team prior (soft) ----------------------------------------------------
     log_e[:, H] += p.tag_weight * tag_prior
     log_e[:, A] -= p.tag_weight * tag_prior
@@ -120,12 +163,17 @@ def emissions(feat, tag_prior, set_pieces, goals, graded, n, fps, p=Params):
         a, b = max(0, start), min(n, end)
         if b <= a:
             continue
-        moving = np.flatnonzero((v_ball[a:b] > 2.0) & visible[a:b])
-        restart = a + (int(moving[0]) if len(moving) else min(lead, b - a - 1))
-        log_e[a:restart, D] += 2.0
+        # The restart is the first kick from a player's feet inside the window (a ball thrown
+        # back onto the pitch does not count); failing that, the typical lead into the window.
+        kicks = np.flatnonzero(feat["kicked"][a:b])
+        restart = a + (int(kicks[0]) if len(kicks) else min(lead, b - a - 1))
+        # Windows vary from 5 s (kick-offs) to over half a minute (free kicks, goal kicks):
+        # the stoppage is the part before the restart, capped, and the restarting side is
+        # credited only for the first moments after it.
+        log_e[max(a, restart - p.setpiece_dead_cap_s * fps):restart, D] += 2.0
         if team is not None:
             t = H if team == "H" else A
-            log_e[restart:b, t] += 1.5
+            log_e[restart:min(b, restart + int(round(p.restart_boost_s * fps))), t] += 1.5
     # Goals: the GOALS tag runs from the goal to just after the kick-off tag begins, so the ball
     # is dead from the tag start until the kick-off inside it is taken (tag start + lead).
     kickoffs = sorted(s for s, _, _, kind in set_pieces if kind.startswith("kick off"))
@@ -135,6 +183,7 @@ def emissions(feat, tag_prior, set_pieces, goals, graded, n, fps, p=Params):
         log_e[start:stop, D] += 3.0
 
     diag = {"shape_k": k, "shape_acc": acc, "shape_n": n_clear, "episodes": ep_counts,
+            "restart_kicks": n_restart_kicks,
             "pd_mean_graded": float(pd[graded].mean()), "hold_share": float(feat["hold"][graded].mean())}
     return log_e, diag
 

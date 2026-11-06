@@ -79,9 +79,13 @@ Four cues feed the dead-ball probability of a frame:
 Smart Tagging adds hard windows. Kick-off tags are 5 s windows starting about 3.5 s before the
 kick; every other set-piece tag is a 35 s window with the restart somewhere inside it, so the
 restart is taken as the first kick from a player's feet in the window, the 15 s before it are
-dead, and the 0.8 s after it favour the tagged restart side. Each GOALS tag is dead from its
-start until the kick-off inside it. The two published kick-off frames (11,185 and 113,742) mark
-the ball in play. Dead-ball spells shorter than 2 s are folded into the spell that follows,
+dead, and the 0.8 s after it favour the tagged restart side. A GOALS tag can start minutes
+before the goal, since it covers the move that produced it, so the goal itself is located as
+the start of the longest quiet stretch before the kick-off tag (ball lost or slow, nobody
+running: the celebration and the walk back), and the ball is dead from there until the
+kick-off is taken. No tag window is allowed to force a dead ball on a frame that visibly shows
+play (tracked ball moving faster than 3 m/s with more than a tenth of the players running). The
+two published kick-off frames (11,185 and 113,742) mark the ball in play. Dead-ball spells shorter than 2 s are folded into the spell that follows,
 because a stoppage cannot be that short. The second half is graded from frame 110,808 but kicks
 off at 113,742, so those frames are written as `D`.
 
@@ -146,10 +150,10 @@ With only 17 possessions in the window, spellF1 differences below about 0.4 are 
 bootstrap noise band, so the second column is encouraging rather than conclusive; the macroF1
 gain, and in particular the dead-ball F1 of 0.93, is well outside the noise.
 
-Across the full match our file has 200 possessions of mean 16 s, 49% of graded frames dead, and
+Across the full match our file has 206 possessions of mean 16 s, 48% of graded frames dead, and
 a 63% home share of alive time. Three label-free checks: inside Metrica's own tagged build-up,
-progression and transition phases we label 11% of frames dead; inside the 3 s before each tagged
-set piece we label 95% dead; and where a tagged phase names a side and we say the ball is alive,
+progression and transition phases we label 9% of frames dead; inside the 3 s before each tagged
+set piece we label 94% dead; and where a tagged phase names a side and we say the ball is alive,
 we name the same side 84% of the time (the baseline: 67%).
 
 ## 6. Limitations
@@ -160,6 +164,13 @@ we name the same side 84% of the time (the baseline: 67%).
   tracking error, nothing can be said and the chain holds its last state.
 - The first seconds of a possession that begins with an untidy recovery are often credited late.
 - Dead-ball boundaries are placed to within about a second, not to the frame.
+- Goalkeepers are frequently absent from the tracking (a player is within 8 m of a goal line on
+  under half of the graded frames), so a keeper holding the ball is seen only as a slow ball
+  with nobody near it; the ground truth, derived from the same tracking family, treats such
+  frames as dead, and so do we.
+- Metrica's ball track trails the video by a few frames. The ground truth runs on the
+  tracker's clock, so no correction is applied for scoring; the clip renderer in
+  `possession/render_clip.py` draws the ball three frames ahead purely for the eye.
 - The broadcast alignment works but is unused; with more time it would become a second ball
   observer and a check on the tactical ball, which disagrees with it by more than 5 m on one
   frame in ten.

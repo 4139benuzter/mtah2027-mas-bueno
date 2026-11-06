@@ -157,6 +157,10 @@ def emissions(feat, tag_prior, set_pieces, goals, transitions, graded, n, fps, p
     log_e[:, H] += p.tag_weight * tag_prior
     log_e[:, A] -= p.tag_weight * tag_prior
 
+    # Frames that visibly show play: tracked ball moving with players running. No tag window
+    # is allowed to force a dead ball on them.
+    clear_play = inplay & (v_ball > 3.0) & (run > 0.10)
+
     # --- set pieces: dead before the restart, restart team after it -------------------------
     lead = int(round(p.restart_lead_s * fps))
     for start, end, team, kind in set_pieces:
@@ -170,17 +174,32 @@ def emissions(feat, tag_prior, set_pieces, goals, transitions, graded, n, fps, p
         # Windows vary from 5 s (kick-offs) to over half a minute (free kicks, goal kicks):
         # the stoppage is the part before the restart, capped, and the restarting side is
         # credited only for the first moments after it.
-        log_e[max(a, restart - p.setpiece_dead_cap_s * fps):restart, D] += 2.0
+        # ... and never on frames that visibly show play (ball tracked, moving, players running).
+        seg = slice(max(a, restart - p.setpiece_dead_cap_s * fps), restart)
+        log_e[seg, D] += 2.0 * ~clear_play[seg]
         if team is not None:
             t = H if team == "H" else A
             log_e[restart:min(b, restart + int(round(p.restart_boost_s * fps))), t] += 1.5
-    # Goals: the GOALS tag runs from the goal to just after the kick-off tag begins, so the ball
-    # is dead from the tag start until the kick-off inside it is taken (tag start + lead).
+    # Goals: a GOALS tag can start minutes before the goal (it covers the move that led to it)
+    # and ends just after the kick-off tag begins. The goal itself is the start of the longest
+    # quiet stretch before that kick-off -- ball lost or slow, nobody running: the celebration
+    # and the walk back -- and the ball is dead from there until the kick-off is taken.
     kickoffs = sorted(s for s, _, _, kind in set_pieces if kind.startswith("kick off"))
+    quiet = (~visible | (v_ball < 3.0)) & (run < 0.15)
     for start, end, team in goals:
         inside = [kf for kf in kickoffs if start <= kf <= end]
-        stop = min(n, (inside[-1] + lead) if inside else end)
-        log_e[start:stop, D] += 3.0
+        ko = inside[-1] if inside else end
+        best_len, best_start, cur = 0, start, None
+        for f in range(start, ko):
+            if quiet[f]:
+                if cur is None:
+                    cur = f
+                if f - cur + 1 > best_len:
+                    best_len, best_start = f - cur + 1, cur
+            else:
+                cur = None
+        stop = min(n, ko + lead)
+        log_e[best_start:stop, D] += 3.0 * ~clear_play[best_start:stop]
 
     diag = {"shape_k": k, "shape_acc": acc, "shape_n": n_clear, "episodes": ep_counts,
             "restart_kicks": n_restart_kicks,

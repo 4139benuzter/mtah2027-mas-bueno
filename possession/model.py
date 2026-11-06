@@ -47,6 +47,9 @@ class Params:
     switch_team = 15.0       # nats
     switch_dead = 25.0       # nats
     min_dead_s = 2.0         # dead-ball spells shorter than this are not stoppages
+    max_snap_s = 3.0         # how far a dead-ball start may be moved back to the onset
+    snap_min_drop = 0.15     # the running share must fall at least this much for a snap
+    snap_tolerance = 0.03    # share within this of its peak still counts as the peak
     carry_dead = 0.55        # P(D) while the ball is walked along a line
     ignored_dead = 0.60      # P(D) while a slow ball sits far from everyone
     restart_pd = 0.45        # mean P(D) over the 2 s before a kick for it to count as a restart
@@ -250,4 +253,38 @@ def merge_short_dead(path, fps, p=Params):
         if path[a] == D and b - a < min_len:
             fill = path[b] if b < n else (path[a - 1] if a > 0 else D)
             path[a:b] = fill
+    return path
+
+
+def snap_dead_onsets(path, feat, fps, p=Params):
+    """Move the start of each dead-ball spell back to the moment the players began to stop.
+
+    The decoder places a boundary where the balance of evidence tips, which for a whistle is a
+    second or two late: the running share only drops to its floor once everybody has slowed. The
+    ground truth marks the whistle. So each D spell is extended back to the last frame at which
+    the running share was still at its recent peak (the start of the decline), provided the
+    decline is a real stop (at least snap_min_drop) and no frame crossed has a player on the
+    ball.
+    """
+    path = path.copy()
+    n = len(path)
+    run = np.nan_to_num(feat["frac_run"], nan=0.3)
+    d_min = np.fmin(np.nan_to_num(feat["d_home"], nan=np.inf), np.nan_to_num(feat["d_away"], nan=np.inf))
+    contact = feat["visible"] & (d_min < 1.5)
+    max_back = int(round(p.max_snap_s * fps))
+    starts = np.flatnonzero((path[1:] == D) & (path[:-1] != D)) + 1
+    for a in starts:
+        w0 = max(0, a - max_back)
+        if w0 >= a:
+            continue
+        seg = run[w0:a]
+        peak = float(seg.max())
+        if peak - run[a] < p.snap_min_drop:
+            continue
+        near_peak = np.flatnonzero(seg >= peak - p.snap_tolerance)
+        f = w0 + int(near_peak[-1])
+        touched = np.flatnonzero(contact[f:a])
+        if len(touched):
+            f = f + int(touched[-1]) + 1
+        path[f:a] = D
     return path

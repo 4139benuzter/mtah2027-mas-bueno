@@ -104,7 +104,17 @@ deliberately small so that they can only decide a long, otherwise silent stretch
 Switch costs are fixed at 15 nats for a change of side and 25 nats for entering or leaving `D`.
 With strong episode evidence worth about 2 nats per frame, a change of side needs roughly 0.3 s
 of clean controlled contact or 1.5 s of untidy contact; a stoppage needs about one second of
-dead-ball evidence. The whole pipeline runs in about 15 s on a laptop.
+dead-ball evidence.
+
+Two post-passes follow the decoder. Dead-ball spells shorter than 2 s are folded into the spell
+that follows. Then every dead-ball onset is moved back to the moment the players began to stop:
+the decoder places the boundary where the balance of evidence tips, which for a whistle is a
+second or two late, while the ground truth marks the whistle. The onset becomes the last frame
+at which the share of players running was still at its recent peak, provided the share then
+fell by at least 0.15 and no frame crossed had a player on the ball. On the public window this
+took the two late stoppage onsets from 1.9 s and 2.2 s late to within two frames.
+
+The whole pipeline runs in about 15 s on a laptop.
 
 ## 2. Assets used, and dropped
 
@@ -144,13 +154,13 @@ alignment and to check that episode classes mean what we thought; no threshold w
 | submission | macroF1 | spellF1 | possessions (truth 17) |
 |---|---|---|---|
 | `baseline_smooth50` (official floor) | 0.6207 | 0.3256 | 26 |
-| ours | 0.8952 | 0.5143 | 11 |
+| ours | 0.9010 | 0.5143 | 11 |
 
 With only 17 possessions in the window, spellF1 differences below about 0.4 are inside the
 bootstrap noise band, so the second column is encouraging rather than conclusive; the macroF1
 gain, and in particular the dead-ball F1 of 0.93, is well outside the noise.
 
-Across the full match our file has 206 possessions of mean 16 s, 48% of graded frames dead, and
+Across the full match our file has 209 possessions of mean 16 s, 48% of graded frames dead, and
 a 63% home share of alive time. Three label-free checks: inside Metrica's own tagged build-up,
 progression and transition phases we label 9% of frames dead; inside the 3 s before each tagged
 set piece we label 94% dead; and where a tagged phase names a side and we say the ball is alive,
@@ -168,9 +178,12 @@ we name the same side 84% of the time (the baseline: 67%).
   under half of the graded frames), so a keeper holding the ball is seen only as a slow ball
   with nobody near it; the ground truth, derived from the same tracking family, treats such
   frames as dead, and so do we.
-- Metrica's ball track trails the video by a few frames. The ground truth runs on the
-  tracker's clock, so no correction is applied for scoring; the clip renderer in
-  `possession/render_clip.py` draws the ball three frames ahead purely for the eye.
+- Metrica's ball track trails the video by about three frames, measured label-free from where
+  the travelling ball meets a receiver. The ground truth runs on the tracker's clock (our side
+  changes are already early against it), so no correction is applied for scoring; the clip
+  renderer in `possession/render_clip.py` draws the ball three frames ahead purely for the eye.
+- Changes of side at an untidy recovery are often credited one to two seconds before the
+  ground truth, which waits for clean control.
 - The broadcast alignment works but is unused; with more time it would become a second ball
   observer and a check on the tactical ball, which disagrees with it by more than 5 m on one
   frame in ten.

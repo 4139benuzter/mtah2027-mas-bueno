@@ -30,6 +30,7 @@ class EpisodeParams:
     with_min = 0.3        # minimum "moving with him" factor for contact
     min_contact = 3       # frames, shorter runs are noise
     merge_gap = 5         # frames, same-team gaps shorter than this are bridged
+    min_pass_contact = 3  # frames; 8 was tried and lost real possessions on the public window
     hold_s = 2.0          # seconds of contact that is control regardless of outcome
     max_flight_s = 4.0    # a flight longer than this resolves nothing
     max_lost_s = 1.0      # ball may vanish this long inside a flight and still link
@@ -91,6 +92,10 @@ def classify(eps, visible, fps, p=EpisodeParams):
             out.append((s, e, k, "controlled", e))
             continue
         nxt = eps[i + 1] if i + 1 < len(eps) else None
+        if e - s < p.min_pass_contact:
+            # A contact too brief to be a deliberate pass is a ricochet: no evidence either way.
+            out.append((s, e, k, "touch", e))
+            continue
         if nxt is None or nxt[0] - e > max_flight or lost_cum[nxt[0]] - lost_cum[e] > max_lost:
             out.append((s, e, k, "unresolved", e))
         elif nxt[2] == k:

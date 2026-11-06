@@ -15,7 +15,7 @@ sys.path.insert(0, ROOT)
 from games import GAME, GAMES, half_video_blocks  # noqa: E402
 from possession.atd import load_tracking  # noqa: E402
 from possession import features, tagging  # noqa: E402
-from possession.model import Params, emissions, switch_costs, viterbi, merge_short_dead, KICKOFF_FRAMES  # noqa: E402
+from possession.model import Params, emissions, switch_costs, viterbi, merge_short_dead, snap_dead_onsets, KICKOFF_FRAMES  # noqa: E402
 
 RESULTS_DIR = os.path.join(ROOT, "evaluation", "results")
 KICKOFF_2ND = 113742     # published in DATA.md / FAQ.md
@@ -51,6 +51,7 @@ def build(params=Params, verbose=True):
         print("episodes: {}  restart kicks: {}".format(diag["episodes"], diag["restart_kicks"]))
         print("switch costs: team {:.1f} nats  dead {:.1f} nats   mean P(D) graded {:.2f}  hold share {:.1%}".format(cost_team, cost_dead, diag["pd_mean_graded"], diag["hold_share"]))
     path = merge_short_dead(viterbi(log_e, cost_team, cost_dead), fps, params)
+    path = snap_dead_onsets(path, feat, fps, params)
 
     labels = np.full(n, "X", dtype="<U1")
     letters = np.array(["H", "A", "D"])

@@ -159,6 +159,14 @@ def compute(trk, pitch, fps, ball_fill=None, kickoffs=()):
     for f0 in np.flatnonzero(run_start):
         if d_min_all[max(0, f0 - 5):f0 + 1].min() < 2.5:
             left_feet[f0] = True
+    # A fast run that left a player's feet is a kick by the nearest side at that moment.
+    for f0 in np.flatnonzero(left_feet & (kick_team < 0)):
+        j = max(0, f0 - 3)
+        dh, da = d_home[j], d_away[j]
+        if np.isfinite(dh) and dh < 2.5 and (not np.isfinite(da) or dh <= da):
+            kick_team[f0] = HOME
+        elif np.isfinite(da) and da < 2.5:
+            kick_team[f0] = AWAY
     kicked = ((kick_team >= 0) | left_feet) & ~out_of_bounds
     # A kick only restarts play if play follows: a ball kicked back towards the spot and then
     # left alone (ignored within the next 4 s) was a retrieval, not a restart.

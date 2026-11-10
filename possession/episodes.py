@@ -12,8 +12,10 @@ by its own length and by where the ball went afterwards:
 
     controlled   the player kept it for >= hold_s                -> strong evidence
     pass         short contact, next contact is a team-mate      -> strong evidence, incl. flight
-    touch        short contact, next contact is an opponent      -> no evidence at all
-    unresolved   short contact, ball lost or nothing follows     -> medium evidence
+    touch        contact < 1 s, next contact is an opponent      -> no evidence at all
+    unresolved   contact < 1 s, ball lost or nothing follows     -> no evidence at all
+
+A contact of at least carry_s (1 s) is control whatever follows (see classify).
 
 The result is a per-frame share in [0, 1] for home possession that the decoder consumes.
 """
@@ -30,12 +32,13 @@ class EpisodeParams:
     with_min = 0.3        # minimum "moving with him" factor for contact
     min_contact = 3       # frames, shorter runs are noise
     merge_gap = 5         # frames, same-team gaps shorter than this are bridged
-    min_pass_contact = 3  # frames; 8 was tried and lost real possessions on the public window
+    min_pass_contact = 3  # frames; the same floor as any contact (min_contact)
     hold_s = 2.0          # seconds of contact that is control regardless of outcome
+    carry_s = 1.0         # seconds of contact that rule out a deflection (see classify)
     max_flight_s = 4.0    # a flight longer than this resolves nothing
     max_lost_s = 1.0      # ball may vanish this long inside a flight and still link
     strong = 0.88         # home share for strong evidence (or 1 - strong for away)
-    medium = 0.50         # unresolved contacts are no better than a coin flip against the truth
+    medium = 0.50         # an unresolved contact is a touch without known control: neutral
     light = 0.50          # a touch never changes possession on its own
     neutral = 0.50
 
@@ -84,6 +87,7 @@ def classify(eps, visible, fps, p=EpisodeParams):
     """Attach an outcome to every episode: 'controlled', 'pass', 'touch' or 'unresolved'."""
     out = []
     hold = int(round(p.hold_s * fps))
+    carry = int(round(p.carry_s * fps))
     max_flight = int(round(p.max_flight_s * fps))
     max_lost = int(round(p.max_lost_s * fps))
     lost_cum = np.concatenate(([0], np.cumsum(~visible)))
@@ -97,11 +101,21 @@ def classify(eps, visible, fps, p=EpisodeParams):
             out.append((s, e, k, "touch", e))
             continue
         if nxt is None or nxt[0] - e > max_flight or lost_cum[nxt[0]] - lost_cum[e] > max_lost:
-            out.append((s, e, k, "unresolved", e))
+            kind = "unresolved"
         elif nxt[2] == k:
             out.append((s, e, k, "pass", nxt[0]))
+            continue
         else:
-            out.append((s, e, k, "touch", e))
+            kind = "touch"
+        if e - s >= carry:
+            # The ball stayed inside the contact radius *and moved with the player* for a full
+            # second. A deflection, a block or a header leaves at well over 3 m/s and so crosses
+            # the 3 m contact disc in under a second; a ball that stays this long was received or
+            # carried. That is control, even though the next contact is an opponent's (a tackle,
+            # a misplaced pass) or never comes: a possession that ended, not a touch. The
+            # threshold is physical, not fitted to any labels.
+            kind = "controlled"
+        out.append((s, e, k, kind, e))
     return out
 
 

@@ -22,6 +22,8 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 from games import GAME, GAMES, require  # noqa: E402
 from possession.atd import load_tracking, HOME  # noqa: E402
+from possession.keepers import fix_keepers  # noqa: E402
+from games import half_video_blocks  # noqa: E402
 from starter.load_homography import load as load_homography, project  # noqa: E402
 
 COLOURS = {"H": (60, 60, 230), "A": (230, 140, 40), "D": (200, 200, 200), "X": (90, 90, 90)}
@@ -45,8 +47,8 @@ def main():
     fps = g["fps"]
     pred = pd.read_csv(args.csv)["label"].astype(str).str.strip().str.upper().values
     gt = pd.read_csv(args.gt)["label"].astype(str).str.strip().str.upper().values
-    trk = load_tracking()
     length, width = g["pitch"]
+    trk = fix_keepers(load_tracking(), half_video_blocks(GAME), length, width)
     H, _, valid = load_homography()
     video_path = require(["video"])[0]
 

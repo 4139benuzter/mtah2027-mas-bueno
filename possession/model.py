@@ -2,9 +2,10 @@
 
 Emissions come from the tracking (who is close to the ball, is it in play, is the ball under
 control or in flight, is anybody running, how are the teams shaped) and from the Smart Tagging
-(which team the phase belongs to). Transitions carry a fixed switch cost, which is what turns
+(which team the phase belongs to). Transitions carry a switch cost, which is what turns
 frame-level flicker into whole possessions: the chain only changes state when the evidence for
-the new state, accumulated over consecutive frames, outweighs the cost.
+the new state, accumulated over consecutive frames, outweighs the cost. A change of side is
+cheap only where the gaining side starts a control episode (gated_team_costs).
 
 No constant here is fitted to any ground truth. The switch costs are expressed as "seconds of
 typical evidence", the control radius and speeds are football quantities, the running-share
@@ -44,6 +45,10 @@ class Params:
     contact_weight_touch = 0.1       # ... inside a touch episode
     contact_weight_unresolved = 0.3  # ... inside an unresolved episode
     use_broadcast = False    # broadcast fill evaluated and dropped: no gain on any check
+    fix_keepers = True       # keeper in a penalty area -> the side defending it (keepers.py)
+    gate_switches = True     # a change of side is cheap only where the new side gains control
+    switch_team_gated = 0.0  # nats, at the onset of a control episode of the gaining side
+    gate_window_s = 0.2      # +- this around the onset (the tracked ball trails by ~3 frames)
     switch_team = 15.0       # nats
     switch_dead = 25.0       # nats
     min_dead_s = 2.0         # dead-ball spells shorter than this are not stoppages
@@ -103,7 +108,7 @@ def emissions(feat, tag_prior, set_pieces, goals, transitions, graded, n, fps, p
 
     # --- team split: control episodes and their outcomes (possession/episodes.py), plus a
     # down-weighted per-frame contact term so sustained but untidy contact still counts ------
-    share_ep, ep_counts, _, kind_of = home_share(feat, inplay, fps)
+    share_ep, ep_counts, eps, kind_of = home_share(feat, inplay, fps)
     c_home = np.exp(-(np.nan_to_num(d_home, nan=1e3) / p.sigma_control) ** 2)
     c_away = np.exp(-(np.nan_to_num(d_away, nan=1e3) / p.sigma_control) ** 2)
     v_ball = np.nan_to_num(feat["v_ball_s"], nan=0.0)
@@ -204,7 +209,7 @@ def emissions(feat, tag_prior, set_pieces, goals, transitions, graded, n, fps, p
         stop = min(n, ko + lead)
         log_e[best_start:stop, D] += 3.0 * ~clear_play[best_start:stop]
 
-    diag = {"shape_k": k, "shape_acc": acc, "shape_n": n_clear, "episodes": ep_counts,
+    diag = {"shape_k": k, "shape_acc": acc, "shape_n": n_clear, "episodes": ep_counts, "eps": eps,
             "restart_kicks": n_restart_kicks,
             "pd_mean_graded": float(pd[graded].mean()), "hold_share": float(feat["hold"][graded].mean())}
     return log_e, diag
@@ -217,8 +222,28 @@ def switch_costs(log_e, feat, graded, fps, p=Params):
     return p.switch_team, p.switch_dead
 
 
-def viterbi(log_e, cost_team, cost_dead):
-    """Most probable state path under fixed switch costs."""
+def gated_team_costs(eps, n, fps, p=Params):
+    """(n, 2) cost of switching *into* H / A at each frame.
+
+    The challenge defines a change of possession as the other side gaining controlled
+    possession. So a change of side is allowed cheaply only where that happens: at the start of
+    a control episode ("controlled" or "pass", see episodes.py) of the side gaining the ball.
+    Anywhere else it costs the full fixed switch_team. With a fixed cost everywhere, a short
+    possession inside the other side's play needs two full switches and is overruled however
+    clean the control was; gated, it needs only the evidence of its own control episodes.
+    """
+    cost = np.full((n, 2), p.switch_team)
+    w = int(round(p.gate_window_s * fps))
+    for s, e, k, kind, _ in eps:
+        if kind in ("controlled", "pass"):
+            cost[max(0, s - w):min(n, s + w + 1), 0 if k == 0 else 1] = p.switch_team_gated
+    return cost
+
+
+def viterbi(log_e, cost_team, cost_dead, team_costs=None):
+    """Most probable state path under switch costs. team_costs, if given, is (n, 2): the cost of
+    switching H->A ... into A (column 1) and A->H into H (column 0) at each frame; otherwise the
+    fixed cost_team applies everywhere."""
     n = len(log_e)
     cost = np.zeros((N_STATES, N_STATES))
     cost[H, A] = cost[A, H] = cost_team
@@ -227,6 +252,9 @@ def viterbi(log_e, cost_team, cost_dead):
     score = log_e[0].copy()
     back = np.zeros((n, N_STATES), dtype=np.int8)
     for t in range(1, n):
+        if team_costs is not None:
+            trans[A, H] = -team_costs[t, 0]
+            trans[H, A] = -team_costs[t, 1]
         cand = score[:, None] + trans              # [from, to]
         back[t] = np.argmax(cand, axis=0)
         score = cand[back[t], np.arange(N_STATES)] + log_e[t]
@@ -288,3 +316,4 @@ def snap_dead_onsets(path, feat, fps, p=Params):
             f = f + int(touched[-1]) + 1
         path[f:a] = D
     return path
+

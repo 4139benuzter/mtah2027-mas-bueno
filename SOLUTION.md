@@ -31,11 +31,13 @@ python -m possession.diagnose evaluation/results/<team_name>.csv   # label-free 
 ```
 possession/
   atd.py        parse the FIFA/EPTS export into numpy arrays (metres), cached
+  keepers.py    goalkeeper team correction: a keeper in a penalty area -> the side defending it
   features.py   per-frame signals: ball visibility, distances, speeds, running share, team
                 shape, out-of-bounds, restart hold
   tagging.py    Smart Tagging -> team prior, set pieces, goals
   episodes.py   contact episodes and their outcomes (the possession rules as evidence)
-  model.py      emissions for a 3-state chain and the Viterbi decoder with fixed switch costs
+  model.py      emissions for a 3-state chain and the Viterbi decoder; a change of side is
+                cheap only where the gaining side starts a control episode
   run.py        end to end -> frame,label CSV
   diagnose.py   label-free checks against Smart Tagging + the public-window segment table
   broadcast.py  broadcast-to-tactical alignment (evaluated, not used in the submission)

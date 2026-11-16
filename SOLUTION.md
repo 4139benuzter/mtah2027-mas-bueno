@@ -1,15 +1,17 @@
 # Our solution: possession from control episodes
 
 This fork adds `possession/`, a tracking-only pipeline that labels every frame of the tactical
-video as `H` / `A` / `D`. It reads the provided ATD and Smart Tagging through `games.py`, uses no
-video, no external data and no learned model beyond one logistic weight fitted to pseudo-labels
-from the tracking itself. The full write-up is in
-[docs/technical_document.md](docs/technical_document.md).
+video as `H` / `A` / `D`. It reads the provided ATD and Smart Tagging through `games.py` and uses
+no video. The decoder settings were chosen on labelled data from **other** matches, Metrica's
+three public sample matches (`possession/calibrate.py`); the only learned weight is one logistic slope
+fitted to pseudo-labels from the tracking itself. No label of the competition match is used by
+any of it. The full write-up, including a disclosure of how earlier versions used the public
+5-minute window, is in [docs/technical_document.md](docs/technical_document.md).
 
 ## Reproduce the submission
 
 ```bash
-pip install -r requirements-possession.txt        # numpy 2.5.0, pandas 3.0.3 (Python >= 3.10)
+pip install -r requirements-possession.txt        # numpy 2.5.0, pandas 3.0.3 (Python >= 3.11)
 # put the data bundle in ./data (see DATA.md) or set MTAH_DATA_DIR
 python make_submission.py --team <team_name>
 ```
@@ -37,7 +39,11 @@ possession/
   episodes.py   contact episodes and their outcomes (the possession rules as evidence)
   model.py      emissions for a 3-state chain and the Viterbi decoder with fixed switch costs
   run.py        end to end -> frame,label CSV
-  diagnose.py   label-free checks against Smart Tagging + the public-window segment table
+  diagnose.py   label-free checks against Smart Tagging (reads no ground truth)
   broadcast.py  broadcast-to-tactical alignment (evaluated, not used in the submission)
+  sample_game.py  Metrica's public sample matches 1-3 (other matches): tracking + event labels
+  calibrate.py    the settings grid on them, scored with the official metric; leave-one-out
+hpc/calibrate.pbs  the same grid as a PBS job (optional)
+calib/             the grid results behind the chosen settings
 make_submission.py   the one command
 ```

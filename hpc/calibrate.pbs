@@ -1,0 +1,21 @@
+#!/bin/bash
+# Calibration grid on Metrica Sample Game 3 (public, another match) for a PBS Pro cluster.
+# Uses only public data; the competition match never leaves the team's own machine.
+#
+#   qsub -v SAMPLE=$HOME/mtah2027-external/metrica-sample-game3 hpc/calibrate.pbs
+#   qsub -v SAMPLE=...,TAG=vis59,EXTRA="--ball-visible 0.59" hpc/calibrate.pbs
+#
+#PBS -N mtah_calib
+#PBS -q cpuq
+#PBS -l select=1:ncpus=64:mem=64gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+
+set -euo pipefail
+cd "$PBS_O_WORKDIR"
+module load "${PY_MODULE:-python/3.14.0-gcc-12.5.0-4km4ttx}"
+source "${VENV:-$HOME/mtah-venv}/bin/activate"
+python -c "import numpy, pandas, sys; print('python', sys.version.split()[0], 'numpy', numpy.__version__, 'pandas', pandas.__version__)"
+JOBID="${PBS_JOBID%%.*}"
+python -m possession.calibrate --sample "${SAMPLE}" --jobs 64 \
+    --out "calib/results_${TAG:-base}_${JOBID}.jsonl" ${EXTRA:-}

@@ -1,4 +1,4 @@
-"""Label-free health checks for a submission, plus the public-window segment table.
+"""Label-free health checks for a submission (Smart Tagging consistency, run statistics).
 
     python -m possession.diagnose evaluation/results/v8_hmm.csv
 """
@@ -59,24 +59,10 @@ def main(path):
         exp[max(0, i["start"]):min(n, i["end"])] = t
     m = gr & (exp != "") & np.isin(pred, ["H", "A"])
     print("  team agreement with Smart Tagging phase sides: {:.1%}".format((pred[m] == exp[m]).mean()))
-    gt = pd.read_csv(os.path.join(ROOT, "evaluation", "gt", "BAR-ATH_possession_gt_public.csv"))["label"].values
-    lo, hi = 11185, 18685
-    wg = gt[lo:hi]
-    breaks = np.flatnonzero(wg[1:] != wg[:-1]) + 1
-    bounds = np.concatenate(([0], breaks, [len(wg)]))
-    print("  public window, GT segment -> predicted runs:")
-    for i in range(len(bounds) - 1):
-        a, b = lo + bounds[i], lo + bounds[i + 1]
-        pr = pred[a:b]
-        out, cur, cnt = [], pr[0], 0
-        for ch in pr:
-            if ch == cur:
-                cnt += 1
-            else:
-                out.append("{}{:.1f}".format(cur, cnt / fps))
-                cur, cnt = ch, 1
-        out.append("{}{:.1f}".format(cur, cnt / fps))
-        print("   {:>2} {} {:>5.1f}s | {}".format(i, wg[bounds[i]], (b - a) / fps, " ".join(out)))
+    # No ground truth of any kind is read here: the checks above use the submission and Metrica's
+    # automatic Smart Tagging only. (An earlier version also printed the public-window segment
+    # table; it was removed in v28, and render_clip.py no longer draws the public labels by
+    # default.)
 
 
 if __name__ == "__main__":

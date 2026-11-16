@@ -24,18 +24,24 @@ from .atd import HOME, AWAY
 
 
 class EpisodeParams:
-    radius = 1.5          # m, ball within this of a player counts as contact
+    # radius, hold_s and medium were chosen on Metrica's three public sample matches -- other
+    # matches, labels from their human event data -- by possession/calibrate.py (v27 values in
+    # brackets); radius and medium kept their v27 values there.
+    radius = 1.5          # m, ball within this of a player counts as contact [v27: 1.5]
     rel_slack = 2.0       # m/s, ball may outrun the player by this
     rel_scale = 4.0       # m/s, fade of the "moving with him" factor
     with_min = 0.3        # minimum "moving with him" factor for contact
     min_contact = 3       # frames, shorter runs are noise
     merge_gap = 5         # frames, same-team gaps shorter than this are bridged
-    min_pass_contact = 3  # frames; 8 was tried and lost real possessions on the public window
-    hold_s = 2.0          # seconds of contact that is control regardless of outcome
+    # min_pass_contact equals min_contact, so the "too brief to be a pass" branch in classify()
+    # never fires and this value has no effect. Disclosure: in v24 it was set by comparing 3 and 8
+    # frames on the public 5-minute window (see docs/technical_document.md, section 3).
+    min_pass_contact = 3  # frames
+    hold_s = 0.75         # seconds of contact that is control regardless of outcome [v27: 2.0]
     max_flight_s = 4.0    # a flight longer than this resolves nothing
     max_lost_s = 1.0      # ball may vanish this long inside a flight and still link
     strong = 0.88         # home share for strong evidence (or 1 - strong for away)
-    medium = 0.50         # unresolved contacts are no better than a coin flip against the truth
+    medium = 0.50         # home share for an unresolved contact [v27: 0.50]
     light = 0.50          # a touch never changes possession on its own
     neutral = 0.50
 

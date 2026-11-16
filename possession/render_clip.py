@@ -4,8 +4,8 @@
         --start 11185 --end 18685 --out ../clips/first5min.mp4
 
 Draws, for every frame: tracked players coloured by side (via the per-frame homography), the
-tracked ball, the predicted label, the public ground truth where it exists, and a two-row
-timeline (prediction over truth) with a cursor. Output is 1280x720 at the video's frame rate.
+tracked ball, the predicted label and a timeline with a cursor (a second "truth" row only if a
+--gt file is passed; none is passed by default). Output is 1280x720 at the video's frame rate.
 The clip contains match footage: it is for the team's own eyes, never for publishing.
 """
 
@@ -35,7 +35,9 @@ def main():
     ap.add_argument("--start", type=int, default=11185)
     ap.add_argument("--end", type=int, default=18685)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--gt", default=os.path.join(ROOT, "evaluation", "gt", "BAR-ATH_possession_gt_public.csv"))
+    # No ground truth by default (v28): the clip shows our labels only. Earlier versions drew the
+    # public 5-minute ground truth here; see docs/technical_document.md, section 3.
+    ap.add_argument("--gt", default=None, help="optional frame,label CSV to draw under the labels")
     ap.add_argument("--ball-lead", type=int, default=3,
                     help="draw the tracked ball this many frames ahead: Metrica's ball track trails the "
                          "video slightly, and the model (and the ground truth) run on the tracker's clock")
@@ -44,7 +46,10 @@ def main():
     g = GAMES[GAME]
     fps = g["fps"]
     pred = pd.read_csv(args.csv)["label"].astype(str).str.strip().str.upper().values
-    gt = pd.read_csv(args.gt)["label"].astype(str).str.strip().str.upper().values
+    if args.gt:
+        gt = pd.read_csv(args.gt)["label"].astype(str).str.strip().str.upper().values
+    else:
+        gt = np.full(len(pred), "X", dtype=object)
     trk = load_tracking()
     length, width = g["pitch"]
     H, _, valid = load_homography()

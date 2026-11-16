@@ -6,11 +6,18 @@ control or in flight, is anybody running, how are the teams shaped) and from the
 frame-level flicker into whole possessions: the chain only changes state when the evidence for
 the new state, accumulated over consecutive frames, outweighs the cost.
 
-No constant here is fitted to any ground truth. The switch costs are expressed as "seconds of
-typical evidence", the control radius and speeds are football quantities, the running-share
-threshold sits in the trough of the bimodal full-match histogram of that feature, and the one
-learned weight (team shape -> possession) is fitted to pseudo-labels the tracking itself produces
-on frames where the ball is unambiguously at a player's feet.
+Where the constants come from:
+  * switch_team, switch_dead, sigma_control and min_dead_s (with radius, hold_s and medium in
+    episodes.py) were chosen on Metrica's three public sample matches -- other matches, labelled
+    from their human event data -- by possession/calibrate.py; only switch_team and hold_s moved
+    from their v27 values. The tagging weights are scaled with switch_team so that, relative to
+    the switch cost, they weigh exactly what they weighed before.
+  * the running-share threshold sits in the trough of the bimodal full-match histogram of that
+    feature, and the one learned weight (team shape -> possession) is fitted to pseudo-labels the
+    tracking itself produces on frames where the ball is unambiguously at a player's feet.
+  * the remaining values are football quantities set by hand. Disclosure: earlier versions
+    (v24-v27) were checked against the public 5-minute window while they were designed; see
+    docs/technical_document.md, section 3. Nothing in this file reads any ground truth.
 """
 
 import numpy as np
@@ -20,6 +27,12 @@ from .episodes import home_share
 H, A, D = 0, 1, 2
 N_STATES = 3
 KICKOFF_FRAMES = (11185, 113742)   # published in DATA.md / FAQ.md: boundaries, not labels
+
+
+# Calibrated on Metrica's three public sample matches (possession/calibrate.py): 15 -> 6 nats.
+# The Smart Tagging weights below are multiplied by the same ratio so their influence relative to
+# a change of side is unchanged ("small enough to decide only a long, otherwise silent stretch").
+_SWITCH_SCALE = 6.0 / 15.0
 
 
 class Params:
@@ -33,10 +46,10 @@ class Params:
     run_scale = 0.02
     shape_weight = 0.15      # scale of the team-shape log-odds while the ball is lost
     shape_weight_visible = 0.03  # ... and while it is visible
-    tag_weight = 0.05        # strength of the Smart Tagging team prior (log-odds units)
+    tag_weight = 0.05 * _SWITCH_SCALE  # Smart Tagging team prior (log-odds units) [v27: 0.05]
     restart_lead_s = 3.5     # a kick-off tag starts ~3.5 s before the restart
     setpiece_dead_cap_s = 15 # at most this much of a set-piece window before the restart is forced dead
-    sigma_control = 1.5      # m, per-frame contact radius
+    sigma_control = 1.5      # m, per-frame contact radius [v27: 1.5]
     eps = 0.25               # floor weight for each team in the per-frame term
     v_rel_slack = 2.0        # m/s
     v_rel_scale = 4.0        # m/s
@@ -44,7 +57,7 @@ class Params:
     contact_weight_touch = 0.1       # ... inside a touch episode
     contact_weight_unresolved = 0.3  # ... inside an unresolved episode
     use_broadcast = False    # broadcast fill evaluated and dropped: no gain on any check
-    switch_team = 15.0       # nats
+    switch_team = 6.0        # nats [v27: 15.0]
     switch_dead = 25.0       # nats
     min_dead_s = 2.0         # dead-ball spells shorter than this are not stoppages
     max_snap_s = 3.0         # how far a dead-ball start may be moved back to the onset
@@ -56,7 +69,7 @@ class Params:
     restart_weight = 1.5     # nats per frame for the restarting side ...
     restart_boost_s = 0.8    # ... for this long after the kick
     transition_s = 3.0       # seconds after a TRANSITION tag start that favour the gaining side
-    transition_weight = 0.5  # nats per frame
+    transition_weight = 0.5 * _SWITCH_SCALE  # nats per frame [v27: 0.5]
 
 
 def fit_shape_logit(feat, graded):
@@ -81,8 +94,12 @@ def fit_shape_logit(feat, graded):
     return float(k), float(acc), int(clear.sum())
 
 
-def emissions(feat, tag_prior, set_pieces, goals, transitions, graded, n, fps, p=Params):
-    """(n, 3) log-probabilities, plus a dict of diagnostics."""
+def emissions(feat, tag_prior, set_pieces, goals, transitions, graded, n, fps, p=Params,
+              kickoffs=KICKOFF_FRAMES):
+    """(n, 3) log-probabilities, plus a dict of diagnostics.
+
+    kickoffs defaults to the two published BAR-ATH kick-off frames; possession/calibrate.py passes
+    the kick-offs of the calibration match instead."""
     visible, oob = feat["visible"], feat["oob"]
     d_home, d_away = feat["d_home"], feat["d_away"]
     inplay = visible & ~oob
@@ -147,7 +164,7 @@ def emissions(feat, tag_prior, set_pieces, goals, transitions, graded, n, fps, p
             n_restart_kicks += 1
 
     # --- the two published kick-offs: the ball is in play from that frame -------------------
-    for kf in KICKOFF_FRAMES:
+    for kf in kickoffs:
         log_e[kf:kf + 2 * fps, H] += 2.0
         log_e[kf:kf + 2 * fps, A] += 2.0
 
@@ -187,10 +204,10 @@ def emissions(feat, tag_prior, set_pieces, goals, transitions, graded, n, fps, p
     # and ends just after the kick-off tag begins. The goal itself is the start of the longest
     # quiet stretch before that kick-off -- ball lost or slow, nobody running: the celebration
     # and the walk back -- and the ball is dead from there until the kick-off is taken.
-    kickoffs = sorted(s for s, _, _, kind in set_pieces if kind.startswith("kick off"))
+    tagged_kickoffs = sorted(s for s, _, _, kind in set_pieces if kind.startswith("kick off"))
     quiet = (~visible | (v_ball < 3.0)) & (run < 0.15)
     for start, end, team in goals:
-        inside = [kf for kf in kickoffs if start <= kf <= end]
+        inside = [kf for kf in tagged_kickoffs if start <= kf <= end]
         ko = inside[-1] if inside else end
         best_len, best_start, cur = 0, start, None
         for f in range(start, ko):
@@ -211,9 +228,9 @@ def emissions(feat, tag_prior, set_pieces, goals, transitions, graded, n, fps, p
 
 
 def switch_costs(log_e, feat, graded, fps, p=Params):
-    """Fixed costs in nats. With strong episode evidence worth ~1.8 nats per frame, a change of
-    team needs about half a second of controlled contact; a stoppage about a second of
-    nobody-running evidence."""
+    """Fixed costs in nats. With strong episode evidence worth ~2 nats per frame, a change of
+    team (6 nats) needs a few frames of clean controlled contact or about half a second of untidy
+    contact; a stoppage (25 nats) about a second of nobody-running evidence."""
     return p.switch_team, p.switch_dead
 
 

@@ -1,0 +1,20 @@
+#!/bin/bash
+# Convert SkillCorner open matches and run the settings grid on them (ball as recorded).
+#   qsub -v "IDS=2017461 2016236" hpc/sc_grid.pbs
+#
+#PBS -N mtah_scgrid
+#PBS -q cpuq
+#PBS -l select=1:ncpus=64:mem=96gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+
+set -euo pipefail
+cd "$PBS_O_WORKDIR"
+module load "${PY_MODULE:-python/3.14.0-gcc-12.5.0-4km4ttx}"
+source "${VENV:-$HOME/mtah-venv}/bin/activate"
+SRC=$HOME/mtah2027-external/skillcorner; OUT=$HOME/mtah2027-external/skillcorner-npz
+mkdir -p "$OUT" calib/grid_sc
+for id in $IDS; do
+  python -m possession.skillcorner "$SRC" "$OUT" "$id"
+  python -m possession.grid --sample "$OUT/SC$id.npz" --jobs 64 --out "calib/grid_sc/SC${id}__rec.jsonl"
+done

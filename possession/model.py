@@ -7,7 +7,10 @@ frame-level flicker into whole possessions: the chain only changes state when th
 the new state, accumulated over consecutive frames, outweighs the cost. A change of side is
 cheap only where the gaining side starts a control episode (gated_team_costs).
 
-No constant here is fitted to any ground truth. The switch costs are expressed as "seconds of
+No constant here is fitted by an optimiser to any ground truth of this match. Some were set by hand
+in v24-v27 with the public window in view and later re-examined on ten other matches (technical
+document, section 3); carry_s and min_contact were chosen on those matches. The switch costs are
+expressed as "seconds of
 typical evidence", the control radius and speeds are football quantities, the running-share
 threshold sits in the trough of the bimodal full-match histogram of that feature, and the one
 learned weight (team shape -> possession) is fitted to pseudo-labels the tracking itself produces

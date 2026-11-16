@@ -2,8 +2,8 @@
 
     python make_submission.py --team <team_name>
 
-Writes evaluation/results/<team_name>.csv, validates it with the official checker and scores it
-against the public 5-minute ground truth. Deterministic: the same data gives the same file.
+Writes evaluation/results/<team_name>.csv and validates its format with the official checker. It
+does not score it against any ground truth. Deterministic: the same data gives the same file.
 """
 
 import argparse

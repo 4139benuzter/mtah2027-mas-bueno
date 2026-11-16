@@ -44,7 +44,7 @@ crosses the 3 m contact disc quickly (at 5 m/s, in 0.6 s). A ball that stays ins
 moves with the player* longer than that was received or carried: that is control, even if the
 next contact is an opponent's (a tackle, a misplaced pass) or never comes. Without such a rule a
 player who carried the ball for 1.7 s and was then tackled contributed nothing, and over the full
-match 85 touch and 57 unresolved episodes of at least a second were discarded that way. v30 set
+match 73 touch and 56 unresolved episodes of at least a second (v30 count) were discarded that way. v30 set
 the threshold at the physical bound of one second. The final version (v31) uses 0.6 s and a
 2-frame minimum contact (v30: 3 frames); these two values were chosen on ten labelled *other*
 matches by a rule fixed in advance (section 3), never on this match.
@@ -55,7 +55,8 @@ other side. A down-weighted per-frame contact term (weight 0.5 in log-odds, Gaus
 radius 1.5 m, floor weight 0.25 per side so that a loose ball 3 m from everyone says nothing) is
 added so that sustained but untidy contact still counts; inside a touch episode that term is
 muted to 0.1 and inside an unresolved one to 0.3, so a touch that went straight to the opponent
-can never accumulate into a change of possession.
+can never accumulate into a change of possession. (How these weights were first set, and their
+re-examination on other matches, are in section 3.)
 
 Two further sources name the side at a restart. A kick out of a stoppage (ball leaving a
 player's feet after two seconds of high dead-ball probability) credits the kicker's side for
@@ -145,7 +146,8 @@ to the moment the players began to stop: the decoder places the boundary where t
 evidence tips, which for a whistle is a second or two late, while the ball is dead from the
 whistle. The onset becomes the last frame at which the share of players running was still at its
 recent peak, provided the share then fell by at least 0.15 and no frame crossed had a player on
-the ball.
+the ball. (This pass was designed on two stoppages of the public window; section 3 says how, and
+how it was re-examined on other matches.)
 
 The whole pipeline runs in about 15 s on a laptop.
 
@@ -169,24 +171,51 @@ The whole pipeline runs in about 15 s on a laptop.
 
 ## 3. Training data and use of the public window
 
-None from outside the provided game and none labelled by a person. The single fitted number is
-the logistic slope of the team-shape prior, fitted to pseudo-labels that the tracking itself
-produces (frames where one side's player is within 1.5 m of the ball and the other side's
-nearest player is more than 3 m away).
+**Labelled data.** No label of the competition match was used to train or to choose anything,
+and nobody labelled any data by hand for this work. The decoder has one fitted number: the
+logistic slope of the team-shape prior, fitted to pseudo-labels that the tracking itself produces
+(frames where one side's player is within 1.5 m of the ball and the other side's nearest player is
+more than 3 m away). Labelled data of *other* matches was used to measure the decoder and to choose
+or re-examine some of its settings:
 
-The public 5-minute ground truth was used to confirm frame alignment and file format, and to
-debug: to find *which mechanism* produced a wrong label (for example the discarded one-second
-carries and the swapped keeper slots), never to set a number. We want to be explicit about the
-history. Earlier development versions were scored against the public window as they were built.
-For the final submission every constant has a stated reason that does not depend on this match's
-labels: physical quantities (contact radius, penalty-area geometry), football rules (a touch is
-neutral evidence; a stoppage lasts at least 2 s), label-free distributions of the full-match
-tracking (the running-share threshold), or, for the carry time and the minimum contact length
-only, a choice on ten labelled other matches (below). The three changes before that (sections 1.1, 1.2 and
-1.5) were judged on label-free full-match checks (section 5), and kept even where a public-window
-number moved the wrong way. The repository's own tools no longer read the public labels by
-default: `possession/diagnose.py` no longer prints a public-window segment table, and
-`possession/render_clip.py` draws a truth row only if a file is passed with `--gt`.
+| dataset | matches (possessions in the labels) | where the labels come from | who produced them | used for |
+|---|---|---|---|---|
+| Metrica sample matches 1-3 | 3 (1,150) | Metrica's event data, turned into frame labels by `possession/sample_game.py` | Metrica's human event coders; the frame rules are ours | measuring every version; choosing v31's two settings; re-examining the constants below |
+| DFL/Sportec open data | 7 (3,061) | the `BallPossession` and `BallStatus` fields of the official DFL position data | the DFL's data provider, as published by Bassek et al. 2025 | the same |
+| SkillCorner open data (https://github.com/SkillCorner/opendata, MIT licence) | 20 (5,146) | SkillCorner's automatic player-possession and game-interruption events, turned into frame labels by `possession/skillcorner.py` | SkillCorner's algorithms; the frame rules are ours | an independent check of v31 only (section 5) |
+
+**The public window: what happened.** The public 5-minute ground truth was used to confirm frame
+alignment and file format, and to debug: to find *which mechanism* produced a wrong label (for
+example the discarded one-second carries and the swapped keeper slots). But while development
+versions v24 to v27 were built, each was also scored against the window with the official scorer
+and its segment table was inspected, and four choices were made with the window in view:
+(a) touch and unresolved contacts were given no weight, after the episode classes were compared
+with the window's sides (controlled and pass agreed with the side in about 90% of cases, touches in
+about two thirds, unresolved contacts in fewer than half); (b) the minimum contact for a pass was
+set to 3 frames after 8 frames lost possessions in the window; (c) the stoppage-onset pass of
+section 1.4 and its three constants were designed on two stoppages in the window; and, very
+probably, (d) the strength of controlled and pass evidence (0.88) was set next to the 90% agreement
+of (a). An earlier version of this document said that the window was never used to set a number.
+That was not accurate, and we correct it here.
+
+**What we did about it.** From v28 on, no version was chosen with the window. The repository's
+tools no longer read it by default (`possession/diagnose.py` prints no window table,
+`possession/render_clip.py` draws a truth row only if a file is passed with `--gt`), and the final
+version was not scored on it at all. Then every constant of (a)-(d) was re-examined on ten
+labelled other matches. (b) was replaced in v31 by a value chosen there (2 frames, below). For (a),
+(c) and (d), 576 combinations (evidence strength 0.88/0.80/0.95; touch and unresolved weight
+0.5/0.6 each; the per-frame contact weights inside them 0.1/0.3 and 0.3/0.1; onset pass 3 s / 1.5 s
+/ off, with its two thresholds at two values each) were scored with the procedure below and a rule
+committed before the jobs ran (`calib/grid_window_rule.md`). No alternative passed it: the
+held-out gain of the best pick was +0.002 (the rule asks for +0.010), and each single alternative
+moved the mean spellF1 by at most 0.002 (switching the onset pass off: -0.001). So the values stay.
+They are now supported by other matches, and their effect on the score is small.
+
+For the final submission every other constant has a stated reason that does not depend on this
+match's labels: physical quantities (contact radius, penalty-area geometry), football rules (a
+touch is neutral evidence; a stoppage lasts at least 2 s), or label-free distributions of the
+full-match tracking (the running-share threshold). The three changes of v30 (sections 1.1, 1.2 and
+1.5) were judged on label-free full-match checks (section 5).
 
 **Validation on other matches, and the last two settings.** Because the competition labels are
 private and the public window cannot tell versions apart, we measured the decoder on ten *other*
@@ -202,7 +231,7 @@ read (below).
   from a ball-out, goal, offside, hand ball or a foul that a restart follows, until the restart.
 - The DFL/Sportec open dataset: seven 2022/23 Bundesliga and 2. Bundesliga matches (Bassek et
   al. 2025, *Scientific Data*, doi:10.1038/s41597-025-04505-y, CC BY 4.0, released with the
-  authorisation of the DFL). Their corrected tracking carries a per-frame `BallPossession` and
+  authorisation of the DFL). Their official position data carry a per-frame `BallPossession` and
   `BallStatus`; the label is `D` where the status is dead, else the owning side
   (`possession/dfl.py`). That is the same kind of source as the competition ground truth.
 
@@ -234,8 +263,13 @@ applied by `possession/grid_select.py`):
 
 Every one of the ten held-out picks was the same: carry time 0.6 s and minimum contact 2 frames,
 all else as in v30. The held-out gain was +0.020 on average (Metrica +0.023, DFL +0.019) and
-positive on all ten matches (smallest +0.011). The label-free checks passed (section 5). The
-public window was not scored for this decision, before or after it.
+positive on all ten matches (smallest +0.011). Because the pick never changed, this held-out gain
+equals the in-sample gain; an independent audit's bootstrap over matches gave an out-of-bag gain of
++0.019 (5th percentile +0.012). Most of the gain comes from the carry time: 0.6 s alone gains
++0.016 and is positive on all ten matches, while the 2-frame contact alone gains +0.005 (smallest
+-0.002) and entered because the rule accepts any setting within 0.003 of the best. The label-free
+checks passed (section 5). The public window was not scored for this decision, before or after
+it.
 
 ## 4. Possession rules implemented
 
@@ -258,14 +292,15 @@ final version (v31):
 | check | v27 | v30 | final (v31) |
 |---|---|---|---|
 | possessions (mean length) | 209 (15.9 s) | 242 (13.8 s) | 284 (11.8 s) |
-| possessions shorter than 2 s | | 13% | 16% |
+| possessions shorter than 2 s | 7% | 13% | 16% |
 | graded frames dead | 47.7% | 47.5% | 47.5% |
 | dead inside tagged build-up / progression / transition phases | 9.2% | 8.7% | 8.7% |
 | dead inside the 3 s before a tagged set piece | 94.5% | 94.6% | 94.6% |
 | same side as a tagged phase, where we say the ball is alive | 84.2% | 83.3% | 82.2% |
 | team-shape pseudo-label agreement | 81.8% | 83.9% | 83.9% |
 
-v31 changes only the split between the sides inside play: its dead-ball spells are those of v30.
+v31 changes almost only the split between the sides inside play: its dead-ball labels differ from
+v30's on 19 frames.
 
 Home share of alive time is 63%. Smart Tagging phases are not possessions (a phase can outlast
 several changes of side), so the side agreement is a sanity bound rather than a target; the
@@ -278,15 +313,15 @@ in-sample; its honest, held-out gain over v30 is +0.020 (section 3).
 | match (true possessions) | v27, ball as recorded | v30, as recorded | v31, as recorded | v27, ball at 59% (mean of 2 seeds) | v30, at 59% | v31, at 59% |
 |---|---|---|---|---|---|---|
 | Metrica 1 (384) | 0.491 | 0.546 | **0.580** | 0.470 | 0.525 | **0.557** |
-| Metrica 2 (360) | 0.533 | 0.592 | **0.612** | 0.533 | 0.592 | **0.612** |
-| Metrica 3 (406) | 0.524 | 0.555 | **0.570** | 0.487 | 0.524 | **0.540** |
+| Metrica 2 (360; ball already 59% visible) | 0.533 | 0.592 | **0.612** | 0.533 | 0.592 | **0.612** |
+| Metrica 3 (406) | 0.524 | 0.555 | **0.570** | 0.486 | 0.524 | **0.540** |
 | DFL J03WMX (511) | 0.435 | 0.487 | **0.517** | 0.333 | 0.358 | **0.378** |
 | DFL J03WN1 (500) | 0.419 | 0.469 | **0.493** | 0.282 | 0.321 | **0.337** |
 | DFL J03WOH (402) | 0.463 | 0.519 | **0.552** | 0.354 | 0.392 | **0.408** |
 | DFL J03WOY (456) | 0.452 | 0.508 | **0.533** | 0.355 | 0.371 | **0.395** |
 | DFL J03WPY (421) | 0.479 | 0.535 | **0.546** | 0.364 | 0.400 | **0.414** |
-| DFL J03WQQ (401) | 0.544 | 0.596 | **0.607** | 0.435 | 0.470 | **0.480** |
-| DFL J03WR9 (370) | 0.459 | 0.534 | **0.558** | 0.390 | 0.430 | **0.451** |
+| DFL J03WQQ (401) | 0.543 | 0.596 | **0.607** | 0.435 | 0.470 | **0.480** |
+| DFL J03WR9 (370) | 0.458 | 0.534 | **0.558** | 0.390 | 0.430 | **0.451** |
 | **mean** | 0.480 | 0.534 | **0.557** | 0.400 | 0.438 | **0.457** |
 
 v30 beats v27, and v31 beats v30, on all ten matches in all three ball conditions (30 of 30 each;
@@ -301,6 +336,30 @@ For the record, a variant of v27 with two settings re-chosen on the three Metric
 level of v30 on the Metrica matches (0.561 against 0.565, chosen in-sample there) but less on the
 DFL matches with the ball as recorded (0.497 against 0.521). We did not use it. The v31 grid
 includes both of its changes (6 nats, 0.75 s) applied to v30, and the rule did not pick them.
+
+**Independent check on SkillCorner open data.** 20 matches of the Australian A-League 2024/25:
+broadcast tracking at 10 fps, resampled to 25 fps, with the ball detected on about 55% of in-play
+frames. The labels come from SkillCorner's automatic player-possession and game-interruption events
+under the competition definition (`possession/skillcorner.py`). The test rule was committed before
+19 of the matches were converted (`calib/skillcorner_rule.md`); the first match exposed a label
+defect and is excluded. These labels are coarser than Metrica's and the DFL's: 256 possessions per
+match on average, against 360-511.
+
+| group (matches) | v30 | final (v31) |
+|---|---|---|
+| Metrica (3), mean over three ball conditions | 0.553 | **0.576** |
+| DFL (7), mean over three ball conditions | 0.435 | **0.454** |
+| SkillCorner (19), ball as recorded | **0.570** | 0.550 |
+
+On SkillCorner, v31 is worse than v30 on all 19 test matches: -0.021 on average (95% interval
+-0.026 to -0.016). Both versions predict more possessions than these labels contain (v30 295, v31
+329 per match). As the rule required, the selection of section 3 was then re-run with the three
+groups weighted equally (`possession/three_group.py`): its pick on all 29 matches was v31 itself,
+and the held-out gain of any change against v31 was negative (-0.007). So v31 stays, but the
+conflict is real. v31 is better on the finer labels and worse on the coarser ones, and which kind
+the competition labels resemble is unknown (section 6). By source, the DFL labels are the closest:
+like the competition ground truth, they are per-frame possession and ball-status fields of official
+position data.
 
 On the public window, as a correctness check only (v31 was not scored on it; see section 3):
 
@@ -335,16 +394,22 @@ apart; EVALUATION.md shows why it should not be asked to.
   frame in ten.
 - The out-of-sample validation (section 5) measures the decoder without Smart Tagging and
   without the keeper fix, on tracking with fixed player identities, and on labels that are not
-  Metrica's corrected tracking (human events for the Metrica matches, the DFL's own possession
+  Metrica's corrected tracking (human events for the Metrica matches, the DFL's official possession
   field for the DFL matches). It shows the direction and size of a change, not the competition
   score. v31's two settings were chosen against those labels, whose definition of possession is
   close to, but not exactly, the competition's; the rule asked for a gain on both kinds of labels
   for that reason.
+- The v31 gain was measured on labels with many short possessions (in Metrica's and the DFL's
+  labels, 26-31% of possessions last under 2 s). An audit test that merged short possessions into
+  the previous one found the gain shrinking with coarser labels and vanishing when possessions
+  under about 2 s were merged. The granularity of the competition labels is unknown, and we did
+  not, and may not, estimate it from the public window. The coarser SkillCorner labels give an
+  independent check (section 5): on them v31 loses 0.021 against v30, on all 19 test matches.
 
 ## 7. Reproduction
 
 ```bash
-pip install -r requirements-possession.txt        # Python 3.11 or newer
+pip install -r requirements-possession.txt        # Python 3.12 or newer (numpy 2.5.0 needs it)
 python make_submission.py --team "Más Bueno"      # quotes needed: the name has a space
 ```
 
@@ -365,6 +430,8 @@ python -m possession.validate --sample <game3>   --game 3 --ball-visible 0.59 --
 # converted once with kloppy 3.19.1 (pip install kloppy==3.19.1), then scored the same way.
 python -m possession.dfl <dfl-xml-folder> <npz-folder>
 python -m possession.validate --sample <npz-folder>/J03WOH.npz --ball-visible 0.59 --seed 1
+# validate.py scores the current defaults (v31); the v30 rows reproduce with
+# `python -m possession.grid ... --only-default`.
 # The settings grid of section 3 (one match and ball condition per run; Linux, uses fork) and
 # the fixed selection rule over all 30 result files:
 python -m possession.grid --sample <npz-folder>/J03WOH.npz --jobs 32 --out calib/grid/J03WOH__rec.jsonl
@@ -373,5 +440,11 @@ python -m possession.grid_select calib/grid/*.jsonl
 
 ## 8. Tools
 
-The code was written with the help of an LLM coding assistant (Claude Code by Anthropic) running
-on the team's own machine. The pipeline itself contains no LLM and no call to any service.
+The code was written with the help of an LLM coding assistant, Claude Code by Anthropic. The
+assistant's program runs on the team's machine, but its language model runs on Anthropic's
+servers, so what the assistant reads is sent there. We used it to write code and to run our own
+scripts. We did not give it the match data files, the video, or extracts of them: it saw file
+and folder names and the summary output that our scripts print (counts, shares and scores).
+It also read the public material: this repository, including the public 5-minute ground truth,
+and the public data of other matches (section 3). The pipeline itself contains no LLM and no
+call to any service.

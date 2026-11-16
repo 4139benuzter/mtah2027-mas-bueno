@@ -3,10 +3,10 @@
 Bassek et al. (2025), "An integrated dataset of spatiotemporal and event data in elite soccer",
 Scientific Data, doi:10.1038/s41597-025-04505-y; files on figshare (article 28196177), licence
 CC BY 4.0, released with the authorisation of the DFL. Seven matches of the 2022/23 Bundesliga and
-2. Bundesliga, 25 fps. Their corrected tracking carries a per-frame BallPossession (home/away) and
-BallStatus (alive/dead) -- the same kind of fields from which the competition ground truth is
-derived ("D where the corrected tracking marks the ball dead, otherwise the team it names as
-owning it"). None of them is the competition match.
+2. Bundesliga, 25 fps. Their official position data carry a per-frame BallPossession (home/away) and
+BallStatus (alive/dead) -- the same kind of fields as those from which the competition ground
+truth is derived in Metrica's corrected tracking ("D where the tracking marks the ball dead,
+otherwise the team it names as owning it"). None of them is the competition match.
 
     python -m possession.dfl <folder with the DFL xml files> <out folder>   # needs kloppy
     trk, labels, info = load_npz("<out folder>/J03WOH.npz")                # numpy only

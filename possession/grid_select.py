@@ -57,6 +57,7 @@ def main(paths):
     if paths and paths[0] == "--grid":
         DEFAULT, paths = default(paths[1]), paths[2:]
     s, cfgs, matches = load(paths)
+    assert len(matches) == 10, "expected the ten validation matches, got {}".format(matches)
     d = key(DEFAULT)
     assert d in s, "the v30 default is missing from the results"
     print("{} settings complete on {} matches x {} conditions".format(len(s), len(matches), CONDITIONS))

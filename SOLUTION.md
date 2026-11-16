@@ -12,7 +12,7 @@ chosen on the competition match. The full write-up is in
 ## Reproduce the submission
 
 ```bash
-pip install -r requirements-possession.txt        # numpy 2.5.0, pandas 3.0.3 (Python >= 3.11)
+pip install -r requirements-possession.txt        # numpy 2.5.0, pandas 3.0.3 (Python >= 3.12; tested on 3.13 and 3.14)
 # put the data bundle in ./data (see DATA.md) or set MTAH_DATA_DIR
 python make_submission.py --team <team_name>
 ```
@@ -48,6 +48,8 @@ possession/
   dfl.py          DFL/Sportec open matches (CC BY 4.0) -> arrays + labels (needs kloppy 3.19.1)
   validate.py     out-of-sample score of the current decoder on those matches
   grid.py         the settings grid on those matches; grid_select.py applies the fixed rule
+  skillcorner.py  SkillCorner open matches (MIT) -> arrays + labels; sc_check.py, three_group.py
+                  the independent check and its fixed follow-up rule
 hpc/               the conversion and validation as PBS jobs (optional)
 calib/             our validation results
 make_submission.py   the one command

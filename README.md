@@ -1,5 +1,8 @@
 # More than a Hack 2027 — Phase 1: Ball Possession
 
+> **Team Más Bueno:** our solution and the one command that regenerates our submission are in
+> [SOLUTION.md](SOLUTION.md); the write-up is [docs/technical_document.md](docs/technical_document.md).
+
 **Organised by [Metrica Sports](https://metrica-sports.com), [FC Barcelona](https://www.fcbarcelona.com)
 and the [Mobile World Capital Barcelona](https://www.mwcbarcelona.com)**, at the Talent Arena in Barcelona.
 

@@ -12,10 +12,10 @@ by its own length and by where the ball went afterwards:
 
     controlled   the player kept it for >= hold_s                -> strong evidence
     pass         short contact, next contact is a team-mate      -> strong evidence, incl. flight
-    touch        contact < 1 s, next contact is an opponent      -> no evidence at all
-    unresolved   contact < 1 s, ball lost or nothing follows     -> no evidence at all
+    touch        contact < carry_s, next contact is an opponent  -> no evidence at all
+    unresolved   contact < carry_s, ball lost or nothing follows -> no evidence at all
 
-A contact of at least carry_s (1 s) is control whatever follows (see classify).
+A contact of at least carry_s (0.6 s) is control whatever follows (see classify).
 
 The result is a per-frame share in [0, 1] for home possession that the decoder consumes.
 """
@@ -30,11 +30,13 @@ class EpisodeParams:
     rel_slack = 2.0       # m/s, ball may outrun the player by this
     rel_scale = 4.0       # m/s, fade of the "moving with him" factor
     with_min = 0.3        # minimum "moving with him" factor for contact
-    min_contact = 3       # frames, shorter runs are noise
+    min_contact = 2       # frames, shorter runs are noise (v31: 3 -> 2, see below)
     merge_gap = 5         # frames, same-team gaps shorter than this are bridged
-    min_pass_contact = 3  # frames; the same floor as any contact (min_contact)
+    min_pass_contact = 2  # frames; the same floor as any contact (min_contact)
     hold_s = 2.0          # seconds of contact that is control regardless of outcome
-    carry_s = 1.0         # seconds of contact that rule out a deflection (see classify)
+    carry_s = 0.6         # seconds of contact that rule out a deflection (see classify; v31: 1.0 -> 0.6)
+    # v31: min_contact, min_pass_contact and carry_s were chosen on ten labelled OTHER matches
+    # (possession/grid.py, rule fixed in advance in calib/grid_rule.md); never on this match.
     max_flight_s = 4.0    # a flight longer than this resolves nothing
     max_lost_s = 1.0      # ball may vanish this long inside a flight and still link
     strong = 0.88         # home share for strong evidence (or 1 - strong for away)
@@ -108,12 +110,13 @@ def classify(eps, visible, fps, p=EpisodeParams):
         else:
             kind = "touch"
         if e - s >= carry:
-            # The ball stayed inside the contact radius *and moved with the player* for a full
-            # second. A deflection, a block or a header leaves at well over 3 m/s and so crosses
-            # the 3 m contact disc in under a second; a ball that stays this long was received or
-            # carried. That is control, even though the next contact is an opponent's (a tackle,
-            # a misplaced pass) or never comes: a possession that ended, not a touch. The
-            # threshold is physical, not fitted to any labels.
+            # The ball stayed inside the contact radius *and moved with the player* for carry_s.
+            # A deflection, a block or a header leaves at well over 3 m/s and so crosses the
+            # 3 m contact disc quickly (at 5 m/s, in 0.6 s); a ball that stays this long was
+            # received or carried. That is control, even though the next contact is an
+            # opponent's (a tackle, a misplaced pass) or never comes: a possession that ended,
+            # not a touch. v30 used the physical bound of 1 s; v31 uses 0.6 s, chosen between
+            # the two on ten labelled other matches (calib/grid_rule.md), not on this match.
             kind = "controlled"
         out.append((s, e, k, kind, e))
     return out

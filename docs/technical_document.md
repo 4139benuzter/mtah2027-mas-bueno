@@ -32,18 +32,22 @@ and by where the ball went next:
 
 | episode | definition | evidence |
 |---|---|---|
-| controlled | contact lasting at least 2 s; or at least 1 s, whatever follows | strong, for that side |
+| controlled | contact lasting at least 2 s; or at least 0.6 s, whatever follows | strong, for that side |
 | pass | shorter contact whose next contact is a team-mate within 4 s, ball not lost for more than 1 s in between | strong, for that side, over the contact and the flight |
-| touch | contact shorter than 1 s whose next contact is an opponent | none |
-| unresolved | contact shorter than 1 s followed by a lost ball or nothing for 4 s | none |
+| touch | contact shorter than 0.6 s whose next contact is an opponent | none |
+| unresolved | contact shorter than 0.6 s followed by a lost ball or nothing for 4 s | none |
 
-**The one-second rule.** A deflection, block or header leaves the player at well over 3 m/s and
-so crosses the 3 m contact disc in under a second. A ball that stays inside the disc *and moves
-with the player* for a full second was received or carried: that is control, even if the next
-contact is an opponent's (a tackle, a misplaced pass) or never comes. Without this rule a player
-who carried the ball for 1.7 s and was then tackled contributed nothing, and over the full match
-85 touch and 57 unresolved episodes of at least a second were discarded that way. The threshold
-is physical, not fitted to labels.
+A contact must last at least 2 frames (80 ms) to count at all.
+
+**The carry rule.** A deflection, block or header leaves the player at well over 3 m/s and so
+crosses the 3 m contact disc quickly (at 5 m/s, in 0.6 s). A ball that stays inside the disc *and
+moves with the player* longer than that was received or carried: that is control, even if the
+next contact is an opponent's (a tackle, a misplaced pass) or never comes. Without such a rule a
+player who carried the ball for 1.7 s and was then tackled contributed nothing, and over the full
+match 85 touch and 57 unresolved episodes of at least a second were discarded that way. v30 set
+the threshold at the physical bound of one second. The final version (v31) uses 0.6 s and a
+2-frame minimum contact (v30: 3 frames); these two values were chosen on ten labelled *other*
+matches by a rule fixed in advance (section 3), never on this match.
 
 Touches and unresolved contacts carry no weight because the challenge says a simple touch
 without control does not change possession: they are neutral evidence, not evidence for the
@@ -174,18 +178,21 @@ The public 5-minute ground truth was used to confirm frame alignment and file fo
 debug: to find *which mechanism* produced a wrong label (for example the discarded one-second
 carries and the swapped keeper slots), never to set a number. We want to be explicit about the
 history. Earlier development versions were scored against the public window as they were built.
-For the final submission every constant has a stated reason that does not depend on the labels:
-physical quantities (contact radius, the one-second carry, penalty-area geometry), football rules
-(a touch is neutral evidence; a stoppage lasts at least 2 s), or label-free distributions of the
-full-match tracking (the running-share threshold). The last three changes (sections 1.1, 1.2 and
+For the final submission every constant has a stated reason that does not depend on this match's
+labels: physical quantities (contact radius, penalty-area geometry), football rules (a touch is
+neutral evidence; a stoppage lasts at least 2 s), label-free distributions of the full-match
+tracking (the running-share threshold), or, for the carry time and the minimum contact length
+only, a choice on ten labelled other matches (below). The three changes before that (sections 1.1, 1.2 and
 1.5) were judged on label-free full-match checks (section 5), and kept even where a public-window
 number moved the wrong way. The repository's own tools no longer read the public labels by
 default: `possession/diagnose.py` no longer prints a public-window segment table, and
 `possession/render_clip.py` draws a truth row only if a file is passed with `--gt`.
 
-**Out-of-sample validation on other matches (chooses nothing).** Because the competition labels
-are private and the public window cannot tell versions apart, we measured the final decoder on
-ten *other* matches with public labels. No setting was chosen on them; they only measure.
+**Validation on other matches, and the last two settings.** Because the competition labels are
+private and the public window cannot tell versions apart, we measured the decoder on ten *other*
+matches with public labels. v30 was only measured on them. For the final version (v31), two
+existing settings were then chosen on them, by a rule fixed and committed before any result was
+read (below).
 
 - Metrica's three public sample matches (https://github.com/metrica-sports/sample-data; games 1
   and 2 added 2020-04-01, game 3 added 2021-04-15, anonymised; none is the competition match).
@@ -206,13 +213,35 @@ there. Because their ball is tracked far more often (Metrica 59-68% of graded fr
 each match is also scored with the ball removed in random 0.4-5 s gaps until it is visible on 59%
 of graded frames, the level of the competition match (two random seeds). Results are in
 section 5. The runs used only public data, as PBS jobs on a university cluster
-(`hpc/dfl_convert.pbs`, `hpc/validate.pbs`); the competition data stayed on our own machine.
+(`hpc/dfl_convert.pbs`, `hpc/validate.pbs`, `hpc/grid.pbs`); the competition data stayed on our
+own machine.
+
+**How the two settings were chosen (v31).** `possession/grid.py` decodes every combination of
+seven existing v30 settings (change-of-side cost 15/10/6 nats, gate window 0.2/0.5/1.0 s, control
+after 2/1.25/0.75 s, carry time 1.0/0.6 s, contact radius 1.5/1.25/2.0 m, minimum contact 3/2
+frames, dead-ball cost 25/18 nats; 648 combinations, no new logic) on the ten matches in the three
+ball conditions. The rule, committed to the repository before the jobs ran (`calib/grid_rule.md`,
+applied by `possession/grid_select.py`):
+
+1. Score a setting on a match by its spellF1 averaged over the three ball conditions.
+2. Pick, on a set of matches, among the settings within 0.003 of the best mean, the one that
+   changes the fewest v30 values.
+3. Estimate the gain honestly by leaving each match out in turn: pick on the other nine, score
+   on the one left out.
+4. Adopt a change only if that held-out gain averages at least +0.010, is positive on at least
+   8 of the 10 matches, and is positive on average for the Metrica and the DFL matches separately;
+   then only if the competition match still passes the label-free checks of section 5.
+
+Every one of the ten held-out picks was the same: carry time 0.6 s and minimum contact 2 frames,
+all else as in v30. The held-out gain was +0.020 on average (Metrica +0.023, DFL +0.019) and
+positive on all ten matches (smallest +0.011). The label-free checks passed (section 5). The
+public window was not scored for this decision, before or after it.
 
 ## 4. Possession rules implemented
 
 - Possession changes only through a controlled contact or a completed pass by the other side;
   the decoder makes a change of side cheap only at such a moment.
-- A contact of a second or more, moving with the player, is control.
+- A contact of 0.6 s or more, moving with the player, is control.
 - A touch, clearance or deflection that does not lead to a team-mate does not change possession.
 - A loose or contested ball keeps the last side in possession.
 - A goalkeeper in his own penalty area belongs to the side defending it.
@@ -223,57 +252,63 @@ section 5. The runs used only public data, as PBS jobs on a university cluster
 
 ## 5. Results
 
-Label-free checks on the full match, for the previously submitted version and the final one:
+Label-free checks on the full match, for the previously submitted version (v27), v30, and the
+final version (v31):
 
-| check | previous | final |
-|---|---|---|
-| possessions (mean length) | 209 (15.9 s) | 242 (13.8 s) |
-| graded frames dead | 47.7% | 47.5% |
-| dead inside tagged build-up / progression / transition phases | 9.2% | 8.7% |
-| dead inside the 3 s before a tagged set piece | 94.5% | 94.6% |
-| same side as a tagged phase, where we say the ball is alive | 84.2% | 83.3% |
-| team-shape pseudo-label agreement | 81.8% | 83.9% |
+| check | v27 | v30 | final (v31) |
+|---|---|---|---|
+| possessions (mean length) | 209 (15.9 s) | 242 (13.8 s) | 284 (11.8 s) |
+| possessions shorter than 2 s | | 13% | 16% |
+| graded frames dead | 47.7% | 47.5% | 47.5% |
+| dead inside tagged build-up / progression / transition phases | 9.2% | 8.7% | 8.7% |
+| dead inside the 3 s before a tagged set piece | 94.5% | 94.6% | 94.6% |
+| same side as a tagged phase, where we say the ball is alive | 84.2% | 83.3% | 82.2% |
+| team-shape pseudo-label agreement | 81.8% | 83.9% | 83.9% |
+
+v31 changes only the split between the sides inside play: its dead-ball spells are those of v30.
 
 Home share of alive time is 63%. Smart Tagging phases are not possessions (a phase can outlast
 several changes of side), so the side agreement is a sanity bound rather than a target; the
 official baseline scores 67% on it.
 
-**Out of sample, on ten other matches with public labels** (section 3; official metric code;
-spellF1; "previous" is v27, "final" is this version):
+**On ten other matches with public labels** (section 3; official metric code; spellF1). v27 and
+v30 were not tuned on these matches. v31's two settings were chosen on them, so its columns are
+in-sample; its honest, held-out gain over v30 is +0.020 (section 3).
 
-| match (true possessions) | previous, ball as recorded | final, ball as recorded | previous, ball at 59% (mean of 2 seeds) | final, ball at 59% (mean of 2 seeds) |
-|---|---|---|---|---|
-| Metrica 1 (384) | 0.491 | **0.546** | 0.470 | **0.525** |
-| Metrica 2 (360) | 0.533 | **0.592** | 0.533 | **0.592** |
-| Metrica 3 (406) | 0.524 | **0.555** | 0.487 | **0.524** |
-| DFL J03WMX (511) | 0.435 | **0.487** | 0.333 | **0.358** |
-| DFL J03WN1 (500) | 0.419 | **0.469** | 0.282 | **0.321** |
-| DFL J03WOH (402) | 0.463 | **0.519** | 0.354 | **0.392** |
-| DFL J03WOY (456) | 0.452 | **0.508** | 0.355 | **0.371** |
-| DFL J03WPY (421) | 0.479 | **0.535** | 0.364 | **0.400** |
-| DFL J03WQQ (401) | 0.544 | **0.596** | 0.435 | **0.470** |
-| DFL J03WR9 (370) | 0.459 | **0.534** | 0.390 | **0.430** |
-| **mean** | 0.480 | **0.534** | 0.400 | **0.438** |
+| match (true possessions) | v27, ball as recorded | v30, as recorded | v31, as recorded | v27, ball at 59% (mean of 2 seeds) | v30, at 59% | v31, at 59% |
+|---|---|---|---|---|---|---|
+| Metrica 1 (384) | 0.491 | 0.546 | **0.580** | 0.470 | 0.525 | **0.557** |
+| Metrica 2 (360) | 0.533 | 0.592 | **0.612** | 0.533 | 0.592 | **0.612** |
+| Metrica 3 (406) | 0.524 | 0.555 | **0.570** | 0.487 | 0.524 | **0.540** |
+| DFL J03WMX (511) | 0.435 | 0.487 | **0.517** | 0.333 | 0.358 | **0.378** |
+| DFL J03WN1 (500) | 0.419 | 0.469 | **0.493** | 0.282 | 0.321 | **0.337** |
+| DFL J03WOH (402) | 0.463 | 0.519 | **0.552** | 0.354 | 0.392 | **0.408** |
+| DFL J03WOY (456) | 0.452 | 0.508 | **0.533** | 0.355 | 0.371 | **0.395** |
+| DFL J03WPY (421) | 0.479 | 0.535 | **0.546** | 0.364 | 0.400 | **0.414** |
+| DFL J03WQQ (401) | 0.544 | 0.596 | **0.607** | 0.435 | 0.470 | **0.480** |
+| DFL J03WR9 (370) | 0.459 | 0.534 | **0.558** | 0.390 | 0.430 | **0.451** |
+| **mean** | 0.480 | 0.534 | **0.557** | 0.400 | 0.438 | **0.457** |
 
-The final version beats the previous one on all ten matches in all three ball conditions (30 of
-30). The removal of the ball is random, so the 59% columns are a pessimistic stand-in for the
-competition match's real gaps, which fall mostly in stoppages. With the ball as recorded, the final
-version finds 51-66% as many possessions as the labels contain (the previous one 42-57%), for
-example 260 of 511 on J03WMX: short possessions remain the main weakness (section 6).
+v30 beats v27, and v31 beats v30, on all ten matches in all three ball conditions (30 of 30 each;
+v31's smallest gains, at 59% visibility, are +0.0001 and +0.0004). The removal of the ball is
+random, so the 59% columns are a pessimistic stand-in for the competition match's real gaps,
+which fall mostly in stoppages. With the ball as recorded, v31 finds 58-74% as many possessions as
+the labels contain (v30 51-66%, v27 42-57%), for example 294 of 511 on J03WMX: short possessions
+remain the main weakness (section 6).
 
-For the record, a variant of the previous decoder with two settings re-chosen on the three
-Metrica matches (change-of-side cost 6 nats, control after 0.75 s; branch `calib-sample-game3`)
-reached about the same level on the Metrica matches (0.561 against 0.565, chosen in-sample there)
-but less on the DFL matches with the ball as recorded (0.497 against 0.521), and the same at 59%.
-We kept the final version.
+For the record, a variant of v27 with two settings re-chosen on the three Metrica matches only
+(change-of-side cost 6 nats, control after 0.75 s; branch `calib-sample-game3`) reached about the
+level of v30 on the Metrica matches (0.561 against 0.565, chosen in-sample there) but less on the
+DFL matches with the ball as recorded (0.497 against 0.521). We did not use it. The v31 grid
+includes both of its changes (6 nats, 0.75 s) applied to v30, and the rule did not pick them.
 
-On the public window, as a correctness check only:
+On the public window, as a correctness check only (v31 was not scored on it; see section 3):
 
 | submission | macroF1 | spellF1 | possessions (truth 17) |
 |---|---|---|---|
 | `baseline_smooth50` (official floor) | 0.6207 | 0.3256 | 26 |
-| ours, previous | 0.9010 | 0.5143 | 11 |
-| ours, final | 0.9089 | 0.5286 | 11 |
+| ours, v27 | 0.9010 | 0.5143 | 11 |
+| ours, v30 | 0.9089 | 0.5286 | 11 |
 
 With only 17 possessions in the window the segment-bootstrap intervals of the two versions of
 ours overlap almost entirely (about 0.31 to 0.72 for both), so the window cannot tell them
@@ -302,7 +337,9 @@ apart; EVALUATION.md shows why it should not be asked to.
   without the keeper fix, on tracking with fixed player identities, and on labels that are not
   Metrica's corrected tracking (human events for the Metrica matches, the DFL's own possession
   field for the DFL matches). It shows the direction and size of a change, not the competition
-  score.
+  score. v31's two settings were chosen against those labels, whose definition of possession is
+  close to, but not exactly, the competition's; the rule asked for a gain on both kinds of labels
+  for that reason.
 
 ## 7. Reproduction
 
@@ -313,12 +350,12 @@ python make_submission.py --team "Más Bueno"      # quotes needed: the name has
 
 Data in `./data` as described in DATA.md (or `MTAH_DATA_DIR`). The run parses the tracking
 once into `cache/` and is deterministic: the same data gives a byte-identical file (SHA-256
-`20f3955c782019014b5142b31f7ecc61ee5545960eff46e26bb4b4da4aff43b7`; checked with the pinned
-numpy 2.5.0 / pandas 3.0.3 from an empty cache, with numpy 2.3.5 / pandas 3.0.0, and on repeated
-runs).
+`f34036f02e246b42f314e1de70d7d6b1cc15aca906d65a686d6963a32604de2a`; checked with the pinned
+numpy 2.5.0 / pandas 3.0.3 and with numpy 2.3.5 / pandas 3.0.0).
 
-To repeat the out-of-sample validation of section 5 (optional; `calib/validate_v30.jsonl` holds
-our run, `calib/validate_v27_v29.jsonl` the comparison versions):
+To repeat the validation of section 5 (optional; `calib/validate_v30.jsonl` and
+`calib/validate_v27_v29.jsonl` hold the runs of v30 and the earlier versions, `calib/grid/` the
+grid of section 3):
 
 ```bash
 # Metrica sample matches 1-3: the files listed in possession/sample_game.py, two folders.
@@ -328,6 +365,10 @@ python -m possession.validate --sample <game3>   --game 3 --ball-visible 0.59 --
 # converted once with kloppy 3.19.1 (pip install kloppy==3.19.1), then scored the same way.
 python -m possession.dfl <dfl-xml-folder> <npz-folder>
 python -m possession.validate --sample <npz-folder>/J03WOH.npz --ball-visible 0.59 --seed 1
+# The settings grid of section 3 (one match and ball condition per run; Linux, uses fork) and
+# the fixed selection rule over all 30 result files:
+python -m possession.grid --sample <npz-folder>/J03WOH.npz --jobs 32 --out calib/grid/J03WOH__rec.jsonl
+python -m possession.grid_select calib/grid/*.jsonl
 ```
 
 ## 8. Tools

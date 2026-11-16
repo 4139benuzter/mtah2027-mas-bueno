@@ -2,14 +2,15 @@
 
 This fork adds `possession/`, a tracking-only pipeline that labels every frame of the tactical
 video as `H` / `A` / `D`. It reads the provided ATD and Smart Tagging through `games.py`, uses no
-video, no external data and no learned model beyond one logistic weight fitted to pseudo-labels
-from the tracking itself. The full write-up is in
+video and no learned model beyond one logistic weight fitted to pseudo-labels from the tracking
+itself. It is validated -- never tuned -- on ten other matches with public labels (Metrica's
+sample matches, the DFL open dataset): `possession/validate.py`. The full write-up is in
 [docs/technical_document.md](docs/technical_document.md).
 
 ## Reproduce the submission
 
 ```bash
-pip install -r requirements-possession.txt        # numpy 2.5.0, pandas 3.0.3 (Python >= 3.10)
+pip install -r requirements-possession.txt        # numpy 2.5.0, pandas 3.0.3 (Python >= 3.11)
 # put the data bundle in ./data (see DATA.md) or set MTAH_DATA_DIR
 python make_submission.py --team <team_name>
 ```
@@ -39,7 +40,12 @@ possession/
   model.py      emissions for a 3-state chain and the Viterbi decoder; a change of side is
                 cheap only where the gaining side starts a control episode
   run.py        end to end -> frame,label CSV
-  diagnose.py   label-free checks against Smart Tagging + the public-window segment table
+  diagnose.py   label-free checks against Smart Tagging (reads no ground truth)
   broadcast.py  broadcast-to-tactical alignment (evaluated, not used in the submission)
+  sample_game.py  Metrica's public sample matches 1-3 (other matches): tracking + event labels
+  dfl.py          DFL/Sportec open matches (CC BY 4.0) -> arrays + labels (needs kloppy 3.19.1)
+  validate.py     out-of-sample score of the current decoder on those matches
+hpc/               the conversion and validation as PBS jobs (optional)
+calib/             our validation results
 make_submission.py   the one command
 ```

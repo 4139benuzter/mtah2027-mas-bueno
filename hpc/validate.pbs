@@ -1,0 +1,25 @@
+#!/bin/bash
+# Score the current decoder on every labelled other match (Metrica samples 1-3, DFL npz files),
+# with the ball as recorded and removed to 59% visibility (two seeds). Public data only.
+#   qsub -v METRICA12=...,METRICA3=...,DFL=$HOME/mtah2027-external/dfl-npz,OUT=calib/validate.jsonl hpc/validate.pbs
+#
+#PBS -N mtah_validate
+#PBS -q cpuq
+#PBS -l select=1:ncpus=32:mem=96gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+
+set -euo pipefail
+cd "$PBS_O_WORKDIR"
+module load "${PY_MODULE:-python/3.14.0-gcc-12.5.0-4km4ttx}"
+source "${VENV:-$HOME/mtah-venv}/bin/activate"
+mkdir -p "$(dirname "$OUT")"; : > "$OUT"
+{
+  for g in 1 2; do for v in "" "--ball-visible 0.59 --seed 0" "--ball-visible 0.59 --seed 1"; do
+    echo "--sample $METRICA12 --game $g $v"; done; done
+  for v in "" "--ball-visible 0.59 --seed 0" "--ball-visible 0.59 --seed 1"; do
+    echo "--sample $METRICA3 --game 3 $v"; done
+  for f in "$DFL"/*.npz; do for v in "" "--ball-visible 0.59 --seed 0" "--ball-visible 0.59 --seed 1"; do
+    echo "--sample $f $v"; done; done
+} | xargs -P 16 -I{} sh -c "python -m possession.validate {} --out $OUT"
+echo "rows: $(wc -l < "$OUT")"

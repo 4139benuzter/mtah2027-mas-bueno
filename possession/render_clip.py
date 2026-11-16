@@ -4,8 +4,8 @@
         --start 11185 --end 18685 --out ../clips/first5min.mp4
 
 Draws, for every frame: tracked players coloured by side (via the per-frame homography), the
-tracked ball, the predicted label, the public ground truth where it exists, and a two-row
-timeline (prediction over truth) with a cursor. Output is 1280x720 at the video's frame rate.
+tracked ball, the predicted label and a timeline with a cursor (a second "truth" row only if a
+--gt file is passed; none is passed by default). Output is 1280x720 at the video's frame rate.
 The clip contains match footage: it is for the team's own eyes, never for publishing.
 """
 
@@ -37,7 +37,9 @@ def main():
     ap.add_argument("--start", type=int, default=11185)
     ap.add_argument("--end", type=int, default=18685)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--gt", default=os.path.join(ROOT, "evaluation", "gt", "BAR-ATH_possession_gt_public.csv"))
+    # No ground truth by default: the clip shows our labels only. Earlier versions drew the public
+    # 5-minute ground truth here; see docs/technical_document.md, section 3.
+    ap.add_argument("--gt", default=None, help="optional frame,label CSV to draw under the labels")
     ap.add_argument("--ball-lead", type=int, default=3,
                     help="draw the tracked ball this many frames ahead: Metrica's ball track trails the "
                          "video slightly, and the model (and the ground truth) run on the tracker's clock")
@@ -46,7 +48,10 @@ def main():
     g = GAMES[GAME]
     fps = g["fps"]
     pred = pd.read_csv(args.csv)["label"].astype(str).str.strip().str.upper().values
-    gt = pd.read_csv(args.gt)["label"].astype(str).str.strip().str.upper().values
+    if args.gt:
+        gt = pd.read_csv(args.gt)["label"].astype(str).str.strip().str.upper().values
+    else:
+        gt = np.full(len(pred), "X", dtype=object)
     length, width = g["pitch"]
     trk = fix_keepers(load_tracking(), half_video_blocks(GAME), length, width)
     H, _, valid = load_homography()
@@ -110,7 +115,7 @@ def main():
                         COLOURS[t] if p == t else (0, 0, 255), 2, cv2.LINE_AA)
             cv2.putText(frame, "frame agreement so far {:.0%}".format(agree / total), (out_w - 420, 38),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (240, 240, 240), 2, cv2.LINE_AA)
-        else:
+        elif args.gt:
             cv2.putText(frame, "truth: not published for this frame", (20, 76), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
                         (160, 160, 160), 2, cv2.LINE_AA)
         cv2.putText(frame, "frame {}  {:02d}:{:02d}".format(f, (f // fps) // 60, (f // fps) % 60), (out_w - 420, 76),

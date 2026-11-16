@@ -1,0 +1,15 @@
+#!/bin/bash
+# Convert one DFL/Sportec open match (public, CC BY 4.0) to the arrays possession/validate.py reads.
+#   qsub -v SRC=$HOME/mtah2027-external/dfl,OUT=$HOME/mtah2027-external/dfl-npz,MATCH=J03WOH hpc/dfl_convert.pbs
+#
+#PBS -N dfl_convert
+#PBS -q cpuq
+#PBS -l select=1:ncpus=2:mem=48gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+
+set -euo pipefail
+cd "$PBS_O_WORKDIR"
+module load "${PY_MODULE:-python/3.14.0-gcc-12.5.0-4km4ttx}"
+source "${VENV:-$HOME/mtah-venv}/bin/activate"
+python -m possession.dfl "$SRC" "$OUT" "$MATCH"

@@ -179,7 +179,34 @@ physical quantities (contact radius, the one-second carry, penalty-area geometry
 (a touch is neutral evidence; a stoppage lasts at least 2 s), or label-free distributions of the
 full-match tracking (the running-share threshold). The last three changes (sections 1.1, 1.2 and
 1.5) were judged on label-free full-match checks (section 5), and kept even where a public-window
-number moved the wrong way.
+number moved the wrong way. The repository's own tools no longer read the public labels by
+default: `possession/diagnose.py` no longer prints a public-window segment table, and
+`possession/render_clip.py` draws a truth row only if a file is passed with `--gt`.
+
+**Out-of-sample validation on other matches (chooses nothing).** Because the competition labels
+are private and the public window cannot tell versions apart, we measured the final decoder on
+ten *other* matches with public labels. No setting was chosen on them; they only measure.
+
+- Metrica's three public sample matches (https://github.com/metrica-sports/sample-data; games 1
+  and 2 added 2020-04-01, game 3 added 2021-04-15, anonymised; none is the competition match).
+  Labels are derived from Metrica's human event data with the competition definition
+  (`possession/sample_game.py`): the owner changes only at an event in which a player plays the
+  ball (pass, carry, recovery, shot, set piece, ball lost), never at a challenge; the ball is dead
+  from a ball-out, goal, offside, hand ball or a foul that a restart follows, until the restart.
+- The DFL/Sportec open dataset: seven 2022/23 Bundesliga and 2. Bundesliga matches (Bassek et
+  al. 2025, *Scientific Data*, doi:10.1038/s41597-025-04505-y, CC BY 4.0, released with the
+  authorisation of the DFL). Their corrected tracking carries a per-frame `BallPossession` and
+  `BallStatus`; the label is `D` where the status is dead, else the owning side
+  (`possession/dfl.py`). That is the same kind of source as the competition ground truth.
+
+`possession/validate.py` runs the decoder exactly as `run.py` does on each match and scores it with
+the official `evaluation/possession_metrics.py`. Smart Tagging does not exist for these matches,
+and their tracking has fixed player identities, so the tagging terms and the keeper fix are off
+there. Because their ball is tracked far more often (Metrica 59-68% of graded frames, DFL 100%),
+each match is also scored with the ball removed in random 0.4-5 s gaps until it is visible on 59%
+of graded frames, the level of the competition match (two random seeds). Results are in
+section 5. The runs used only public data, as PBS jobs on a university cluster
+(`hpc/dfl_convert.pbs`, `hpc/validate.pbs`); the competition data stayed on our own machine.
 
 ## 4. Possession rules implemented
 
@@ -210,6 +237,35 @@ Label-free checks on the full match, for the previously submitted version and th
 Home share of alive time is 63%. Smart Tagging phases are not possessions (a phase can outlast
 several changes of side), so the side agreement is a sanity bound rather than a target; the
 official baseline scores 67% on it.
+
+**Out of sample, on ten other matches with public labels** (section 3; official metric code;
+spellF1; "previous" is v27, "final" is this version):
+
+| match (true possessions) | previous, ball as recorded | final, ball as recorded | previous, ball at 59% (mean of 2 seeds) | final, ball at 59% (mean of 2 seeds) |
+|---|---|---|---|---|
+| Metrica 1 (384) | 0.491 | **0.546** | 0.470 | **0.525** |
+| Metrica 2 (360) | 0.533 | **0.592** | 0.533 | **0.592** |
+| Metrica 3 (406) | 0.524 | **0.555** | 0.487 | **0.524** |
+| DFL J03WMX (511) | 0.435 | **0.487** | 0.333 | **0.358** |
+| DFL J03WN1 (500) | 0.419 | **0.469** | 0.282 | **0.321** |
+| DFL J03WOH (402) | 0.463 | **0.519** | 0.354 | **0.392** |
+| DFL J03WOY (456) | 0.452 | **0.508** | 0.355 | **0.371** |
+| DFL J03WPY (421) | 0.479 | **0.535** | 0.364 | **0.400** |
+| DFL J03WQQ (401) | 0.544 | **0.596** | 0.435 | **0.470** |
+| DFL J03WR9 (370) | 0.459 | **0.534** | 0.390 | **0.430** |
+| **mean** | 0.480 | **0.534** | 0.400 | **0.438** |
+
+The final version beats the previous one on all ten matches in all three ball conditions (30 of
+30). The removal of the ball is random, so the 59% columns are a pessimistic stand-in for the
+competition match's real gaps, which fall mostly in stoppages. With the ball as recorded, the final
+version finds 51-66% as many possessions as the labels contain (the previous one 42-57%), for
+example 260 of 511 on J03WMX: short possessions remain the main weakness (section 6).
+
+For the record, a variant of the previous decoder with two settings re-chosen on the three
+Metrica matches (change-of-side cost 6 nats, control after 0.75 s; branch `calib-sample-game3`)
+reached about the same level on the Metrica matches (0.561 against 0.565, chosen in-sample there)
+but less on the DFL matches with the ball as recorded (0.497 against 0.521), and the same at 59%.
+We kept the final version.
 
 On the public window, as a correctness check only:
 
@@ -242,16 +298,37 @@ apart; EVALUATION.md shows why it should not be asked to.
 - The broadcast alignment works but is unused; with more time it would become a second ball
   observer and a check on the tactical ball, which disagrees with it by more than 5 m on one
   frame in ten.
+- The out-of-sample validation (section 5) measures the decoder without Smart Tagging and
+  without the keeper fix, on tracking with fixed player identities, and on labels that are not
+  Metrica's corrected tracking (human events for the Metrica matches, the DFL's own possession
+  field for the DFL matches). It shows the direction and size of a change, not the competition
+  score.
 
 ## 7. Reproduction
 
 ```bash
-pip install -r requirements-possession.txt
-python make_submission.py --team "Más Bueno"
+pip install -r requirements-possession.txt        # Python 3.11 or newer
+python make_submission.py --team "Más Bueno"      # quotes needed: the name has a space
 ```
 
 Data in `./data` as described in DATA.md (or `MTAH_DATA_DIR`). The run parses the tracking
-once into `cache/` and is deterministic: the same data gives a byte-identical file.
+once into `cache/` and is deterministic: the same data gives a byte-identical file (SHA-256
+`20f3955c782019014b5142b31f7ecc61ee5545960eff46e26bb4b4da4aff43b7`; checked with the pinned
+numpy 2.5.0 / pandas 3.0.3 from an empty cache, with numpy 2.3.5 / pandas 3.0.0, and on repeated
+runs).
+
+To repeat the out-of-sample validation of section 5 (optional; `calib/validate_v30.jsonl` holds
+our run, `calib/validate_v27_v29.jsonl` the comparison versions):
+
+```bash
+# Metrica sample matches 1-3: the files listed in possession/sample_game.py, two folders.
+python -m possession.validate --sample <games12> --game 1
+python -m possession.validate --sample <game3>   --game 3 --ball-visible 0.59 --seed 0
+# DFL: the 7 match-information and raw-position XML files from figshare article 28196177,
+# converted once with kloppy 3.19.1 (pip install kloppy==3.19.1), then scored the same way.
+python -m possession.dfl <dfl-xml-folder> <npz-folder>
+python -m possession.validate --sample <npz-folder>/J03WOH.npz --ball-visible 0.59 --seed 1
+```
 
 ## 8. Tools
 

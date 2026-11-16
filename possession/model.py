@@ -65,6 +65,7 @@ class Params:
     restart_boost_s = 0.8    # ... for this long after the kick
     transition_s = 3.0       # seconds after a TRANSITION tag start that favour the gaining side
     transition_weight = 0.5  # nats per frame
+    short_possessions = True # v32: learned filter for brief contacts and kicks (touches.py)
 
 
 def fit_shape_logit(feat, graded):

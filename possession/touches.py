@@ -19,11 +19,16 @@ max_len_s later).
 numpy only; the fitted weights are stored as plain numbers (calib/touch_weights.json).
 """
 
+import json
+import os
+
 import numpy as np
 
 from .features import moving_mean
 
 FPS = 25
+WEIGHTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "calib",
+                       "touch_weights.json")
 KINDS = ("controlled", "pass", "touch", "unresolved", "kick")
 
 
@@ -204,3 +209,16 @@ def insert(path, cands, prob, tau, fps=FPS, p=TouchParams):
             end = s + int(dead[0])
         out[s:end] = k
     return out
+
+
+def apply(ball, feat, eps, path, fps=FPS, weights=WEIGHTS):
+    """The decoder's path with the filter applied, using the stored weights and threshold."""
+    with open(weights) as handle:
+        model = json.load(handle)
+    with np.errstate(all="ignore"):
+        dv = delta_v(ball_velocity(ball, fps))
+    cands = candidates(feat, eps, dv)
+    if not cands:
+        return path
+    prob = predict(model, featurize(cands, feat, dv, path, fps))
+    return insert(path, cands, prob, model["tau"], fps)

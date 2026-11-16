@@ -33,8 +33,21 @@ from possession.validate import drop_ball  # noqa: E402
 
 FPS = 25
 EXT = os.environ.get("MTAH_EXTERNAL", os.path.join(os.path.dirname(ROOT), "external"))
-CACHE = os.path.join(ROOT, "cache", "touch")
-CONDS = (("rec", None, 0), ("v59s0", 0.59, 0), ("v59s1", 0.59, 1))
+# Variants: ball conditions (name, visibility, seed) plus a smoothing half-width in frames applied
+# to the ball after any removal, and the kick threshold. "raw" is the first test (v32);
+# "smooth" matches the competition ball, whose velocity changes at contacts are soft (median peak
+# 3.0 m/s against 9-12 m/s on Metrica and DFL; label-free, from the tracking input).
+VARIANTS = {
+    "raw": {"conds": (("rec", None, 0), ("v59s0", 0.59, 0), ("v59s1", 0.59, 1)), "smooth": 0, "dv_min": 4.0},
+    "smooth": {"conds": (("s10rec", None, 0), ("s10v59s0", 0.59, 0), ("s10v59s1", 0.59, 1)),
+               "smooth": 10, "dv_min": 4.0},
+    "smooth_k2": {"conds": (("s10rec", None, 0), ("s10v59s0", 0.59, 0), ("s10v59s1", 0.59, 1)),
+                  "smooth": 10, "dv_min": 2.0},
+}
+VARIANT = os.environ.get("TOUCH_VARIANT", "raw")
+CACHE = os.path.join(ROOT, "cache", "touch" if VARIANT == "raw" else "touch_" + VARIANT)
+CONDS = VARIANTS[VARIANT]["conds"]
+T.TouchParams.dv_min = VARIANTS[VARIANT]["dv_min"]
 EXCLUDED_SC = {"SC2017461"}
 TAUS = (0.5, 0.6, 0.7, 0.8, 0.9, 2.0)    # 2.0 = filter off (v31 unchanged)
 WEIGHTS = os.path.join(ROOT, "calib", "touch_weights.json")
@@ -62,6 +75,13 @@ def load(match):
     return sample_game.load(match)
 
 
+def smooth_ball(ball, half):
+    """Centred moving mean of the ball over +- half frames, kept missing where it was missing."""
+    out = np.stack([features.moving_mean(ball[:, 0], half), features.moving_mean(ball[:, 1], half)], axis=1)
+    out[np.isnan(ball[:, 0])] = np.nan
+    return out
+
+
 def decode_v31(trk, labels, info):
     """(path, feat, eps): exactly possession/validate.py's decode, keeping the intermediates."""
     n = len(labels)
@@ -84,6 +104,9 @@ def build_one(job):
     trk, labels, info = load(match)
     if vis:
         trk["ball"] = drop_ball(trk["ball"], labels != "X", vis, seed)
+    half = VARIANTS[VARIANT]["smooth"] if not match.endswith("npz") or "SC" not in os.path.basename(match) else 0
+    if half:
+        trk["ball"] = smooth_ball(trk["ball"], half)
     gt = pm.label_codes(labels)
     path, feat, eps = decode_v31(trk, labels, info)
     with warnings.catch_warnings():
@@ -207,7 +230,7 @@ def cmd_final(_):
     model = train(data, list(data))
     model["tau"] = tau
     print("tau on all ten (leave-one-out predictions):", {t: round(v, 4) for t, v in J.items()}, "->", tau)
-    sc = load_all(sc_matches(), ["rec"])
+    sc = load_all(sc_matches(), [CONDS[0][0]])
     sc_names = [name_of(m) for m in sc_matches()]
     d_sc = np.array([s_of(sc, m, model, tau) - s_of(sc, m, model, 2.0) for m in sc_names])
     sel = json.load(open(os.path.join(CACHE, "select.json")))

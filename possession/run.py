@@ -15,7 +15,7 @@ sys.path.insert(0, ROOT)
 from games import GAME, GAMES, half_video_blocks  # noqa: E402
 from possession.atd import load_tracking  # noqa: E402
 from possession.keepers import fix_keepers  # noqa: E402
-from possession import features, tagging  # noqa: E402
+from possession import features, tagging, touches  # noqa: E402
 from possession.model import Params, emissions, switch_costs, viterbi, merge_short_dead, snap_dead_onsets, gated_team_costs, KICKOFF_FRAMES  # noqa: E402
 
 RESULTS_DIR = os.path.join(ROOT, "evaluation", "results")
@@ -60,6 +60,10 @@ def build(params=Params, verbose=True):
     team_costs = gated_team_costs(diag["eps"], n, fps, params) if params.gate_switches else None
     path = merge_short_dead(viterbi(log_e, cost_team, cost_dead, team_costs), fps, params)
     path = snap_dead_onsets(path, feat, fps, params)
+    if params.short_possessions:
+        # Possessions shorter than the decoder can see, from a filter trained on other matches
+        # only (possession/touches.py, calib/touch_rule.md, calib/touch_weights.json).
+        path = touches.apply(trk["ball"], feat, diag["eps"], path, fps)
 
     labels = np.full(n, "X", dtype="<U1")
     letters = np.array(["H", "A", "D"])

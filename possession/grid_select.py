@@ -1,6 +1,6 @@
 """Apply the fixed selection rule of calib/grid_rule.md to the grid results. Chooses nothing else.
 
-    python -m possession.grid_select calib/grid/*.jsonl
+    python -m possession.grid_select [--grid window] calib/grid/*.jsonl
 """
 
 import json
@@ -9,7 +9,9 @@ from collections import defaultdict
 
 import numpy as np
 
-from possession.grid import DEFAULT
+from possession.grid import default
+
+DEFAULT = default("v30")
 
 NEAR_BEST = 0.003
 MIN_MEAN_GAIN = 0.010
@@ -51,6 +53,9 @@ def pick(s, cfgs, subset):
 
 
 def main(paths):
+    global DEFAULT
+    if paths and paths[0] == "--grid":
+        DEFAULT, paths = default(paths[1]), paths[2:]
     s, cfgs, matches = load(paths)
     d = key(DEFAULT)
     assert d in s, "the v30 default is missing from the results"

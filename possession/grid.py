@@ -42,22 +42,49 @@ GRID = {
     "switch_dead": [25.0, 18.0],
 }
 DEFAULT = {k: v[0] for k, v in GRID.items()}
-MODEL_KEYS = ("switch_team", "gate_window_s", "switch_dead")
+V31 = dict(DEFAULT, carry_s=0.6, min_contact=2)
+
+# Grid "window": the constants that earlier versions (v24-v27) set with reference to the public
+# 5-minute window (technical document, section 3), re-examined from v31 on other matches only.
+# First value of every list = the current value.
+GRID_WINDOW = {
+    "strong": [0.88, 0.80, 0.95],            # evidence of a controlled contact or a pass
+    "light": [0.50, 0.60],                   # a touch: neutral, or weak evidence
+    "medium": [0.50, 0.60],                  # an unresolved contact: neutral, or weak evidence
+    "contact_weight_touch": [0.1, 0.3],      # per-frame contact term inside a touch
+    "contact_weight_unresolved": [0.3, 0.1], # ... inside an unresolved contact
+    "max_snap_s": [3.0, 0.0, 1.5],           # stoppage-onset snap: 0 switches it off
+    "snap_min_drop": [0.15, 0.25],
+    "snap_tolerance": [0.03, 0.06],
+}
+GRIDS = {"v30": (GRID, {}), "window": (GRID_WINDOW, V31)}
+EPISODE_ATTRS = set(vars(E.EpisodeParams))
 
 _S = {}
 
 
-def configs():
-    return [dict(zip(GRID, values)) for values in itertools.product(*GRID.values())]
+def default(name="v30"):
+    grid, base = GRIDS[name]
+    return dict(base, **{k: v[0] for k, v in grid.items()})
+
+
+def configs(name="v30"):
+    grid, base = GRIDS[name]
+    return [dict(base, **dict(zip(grid, values))) for values in itertools.product(*grid.values())]
 
 
 def apply(cfg):
     """Set the episode settings (module class defaults) and return a Params subclass."""
-    for key in ("hold_s", "carry_s", "radius"):
-        setattr(E.EpisodeParams, key, cfg[key])
-    E.EpisodeParams.min_contact = E.EpisodeParams.min_pass_contact = int(cfg["min_contact"])
-    P = type("P", (Params,), {key: cfg[key] for key in MODEL_KEYS})
-    return P
+    model = {}
+    for key, value in cfg.items():
+        if key == "min_contact":     # v30 keeps min_pass_contact equal to min_contact
+            E.EpisodeParams.min_contact = E.EpisodeParams.min_pass_contact = int(value)
+        elif key in EPISODE_ATTRS:
+            setattr(E.EpisodeParams, key, value)
+        else:
+            assert hasattr(Params, key), key
+            model[key] = value
+    return type("P", (Params,), model)
 
 
 def decode(cfg):
@@ -88,6 +115,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=os.cpu_count())
     ap.add_argument("--out", required=True)
     ap.add_argument("--only-default", action="store_true")
+    ap.add_argument("--grid", default="v30", choices=sorted(GRIDS))
     args = ap.parse_args()
 
     t0 = time.time()
@@ -103,7 +131,7 @@ def main():
         else "metrica_game{}".format(args.game)
     cond = "rec" if not args.ball_visible else "v{:.0f}s{}".format(100 * args.ball_visible,
                                                                    args.seed)
-    todo = [DEFAULT] if args.only_default else configs()
+    todo = [default(args.grid)] if args.only_default else configs(args.grid)
     print("{} {}: features {:.0f} s, {} settings".format(name, cond, time.time() - t0, len(todo)),
           flush=True)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)

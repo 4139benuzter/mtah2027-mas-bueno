@@ -10,10 +10,11 @@
 #PBS -j oe
 
 set -euo pipefail
+mkdir -p "$PBS_O_WORKDIR/calib/grid${GRID:+_$GRID}"
 cd "$PBS_O_WORKDIR"
 module load "${PY_MODULE:-python/3.14.0-gcc-12.5.0-4km4ttx}"
 source "${VENV:-$HOME/mtah-venv}/bin/activate"
 for c in rec v59s0 v59s1; do
   case $c in rec) x="";; v59s0) x="--ball-visible 0.59 --seed 0";; v59s1) x="--ball-visible 0.59 --seed 1";; esac
-  python -m possession.grid $ARGS $x --jobs 64 --out "calib/grid/${NAME}__$c.jsonl"
+  python -m possession.grid $ARGS $x --grid "${GRID:-v30}" --jobs 64 --out "calib/grid${GRID:+_$GRID}/${NAME}__$c.jsonl"
 done

@@ -16,7 +16,7 @@ import os
 import sys
 import time
 import warnings
-from multiprocessing import Pool
+import multiprocessing
 
 import numpy as np
 
@@ -107,7 +107,8 @@ def main():
     print("{} {}: features {:.0f} s, {} settings".format(name, cond, time.time() - t0, len(todo)),
           flush=True)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    pool = Pool(args.jobs) if args.jobs > 1 else None   # Linux fork: workers share _S
+    # Workers must inherit _S, so fork explicitly: Python 3.14 no longer forks by default.
+    pool = multiprocessing.get_context("fork").Pool(args.jobs) if args.jobs > 1 else None
     rows = pool.imap_unordered(decode, todo, chunksize=1) if pool else map(decode, todo)
     with open(args.out, "w") as handle:
         for i, row in enumerate(rows):

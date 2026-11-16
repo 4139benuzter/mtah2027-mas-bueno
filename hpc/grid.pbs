@@ -1,0 +1,16 @@
+#!/bin/bash
+# One match in one ball condition through the whole settings grid (possession/grid.py).
+# Public, labelled other matches only.
+#   qsub -v "ARGS=--sample <folder|npz> --game 1 --ball-visible 0.59 --seed 0,OUT=calib/grid/x.jsonl" hpc/grid.pbs
+#
+#PBS -N mtah_grid
+#PBS -q cpuq
+#PBS -l select=1:ncpus=32:mem=64gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+
+set -euo pipefail
+cd "$PBS_O_WORKDIR"
+module load "${PY_MODULE:-python/3.14.0-gcc-12.5.0-4km4ttx}"
+source "${VENV:-$HOME/mtah-venv}/bin/activate"
+python -m possession.grid $ARGS --jobs 32 --out "$OUT"

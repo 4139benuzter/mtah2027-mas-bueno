@@ -50,3 +50,29 @@ it; the team says yes before any merge into main; the CSV is regenerated and upl
 **Otherwise** v31 stays.
 
 The public window is not scored for this decision.
+
+## Amendment 1 (2026-11-17, committed before any output of the grid was read)
+
+An adversarial review (workflow wf_0eb98913-5c9: four reviewers, each finding checked by an
+independent skeptic) found that the two 59% conditions contradict the purpose of this rule.
+`drop_ball` runs before the degradation; its random gaps cut the 30-45 s stoppage holds into pieces
+shorter than m = 500 frames, so `nohold` removes 0-1.2% of graded frames instead of 30-36%, and the
+stoppage ball stays visible. The random removal also makes many short in-play gaps, while the
+competition ball has only 17 missing runs shorter than 1 s in the whole match. The degraded ball as
+recorded already reproduces the competition's missing-ball pattern. The first grid run (old
+conditions) was stopped at 14 of 30 jobs; its outputs were moved to
+`cache/grid_dom/dom_discarded_unread/` without being read, and are not used.
+
+Changes (nothing else changes: grid, pick, thresholds, conditions 1-7):
+1. The scored conditions are the degraded ball as recorded with three seeds of the degradation
+   noise (0, 1, 2), in place of (as recorded, 59% seed 0, 59% seed 1). s(c, m) is the mean over the
+   three seeds; this also averages the degradation noise, which moves a per-match gain by up to
+   0.017 between seeds.
+2. Condition 7 and any CSV are built with the v32 filter off (`Params.short_possessions = False`):
+   the grid never scores the filter.
+3. If the final setting equals v31, `check` reports that there is nothing to adopt.
+
+Disclosure: to test the defects, the review agents decoded v31 and a few single-change settings
+(for example radius 2.0, min_contact 5, switch_team 6) on two DFL matches and on seven SkillCorner
+matches; those numbers are in the review transcript. No output of the grid was read before this
+amendment.

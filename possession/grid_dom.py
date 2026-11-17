@@ -47,6 +47,11 @@ GRID_DOM = {
 }
 V31 = {k: v[0] for k, v in GRID_DOM.items()}
 CONDS = (("rec", None, 0), ("v59s0", 0.59, 0), ("v59s1", 0.59, 1))
+# Amendment 1 of calib/domain_decoder_rule.md: the scored conditions are the degraded ball as
+# recorded with three seeds of the degradation noise (no random removal: it cuts the stoppage
+# holds before nohold sees them and makes in-play gaps the competition ball does not have).
+CONDS_DOM = (("drec0", 0), ("drec1", 1), ("drec2", 2))
+DOM_DIR = "dom2"
 ALT = {"sub": {"k": 8, "h": 8, "noise": 0.4, "lag": 4}, "gauss": {"s": 6.27, "noise": 1.0, "lag": 2},
        "box": {"h": 8, "noise": 0.32, "lag": 1}, "kalman": {"q": 1.9, "r": 1.0, "noise": 0.3, "lag": 3}}
 EXCLUDED_SC = {"SC2017461"}
@@ -78,14 +83,17 @@ def load(match):
     return sample_game.load(match)
 
 
-def prepare(match, vis, seed, deg):
-    """Features of one match in one ball condition. deg: 'dom', 'raw' or 'alt:<family>'."""
+def prepare(match, vis, seed, deg, dseed=0):
+    """Features of one match in one ball condition. deg: 'dom', 'raw' or 'alt:<family>'.
+    dseed: seed of the degradation noise (dom only)."""
     trk, labels, info = load(match)
+    if deg == "dom":
+        assert not vis, "amendment 1: no random removal before the domain degradation"
     if vis:
         trk["ball"] = drop_ball(trk["ball"], labels != "X", vis, seed)
     if deg == "dom":
         choice = json.load(open(CHOICE))
-        trk["ball"] = degrade.apply(trk["ball"], choice["family"], choice["params"])
+        trk["ball"] = degrade.apply(trk["ball"], choice["family"], choice["params"], seed=dseed)
     elif deg.startswith("alt:"):
         fam = deg[4:]
         trk["ball"] = degrade.apply(trk["ball"], fam, ALT[fam])
@@ -113,10 +121,10 @@ def score(cfg, feat, labels, info, gt):
 
 
 def run_job(job):
-    match, cond, vis, seed, deg, cfgs, out = job
+    match, cond, vis, seed, deg, dseed, cfgs, out = job
     if os.path.isfile(out):
         return out
-    feat, labels, info = prepare(match, vis, seed, deg)
+    feat, labels, info = prepare(match, vis, seed, deg, dseed)
     gt = pm.label_codes(labels)
     with open(out + ".tmp", "w") as handle:
         for cfg in cfgs:
@@ -165,16 +173,16 @@ def pick(s, cfgs, subset):
 
 def cmd_run(args):
     n_jobs = int(args[args.index("--jobs") + 1]) if "--jobs" in args else 14
-    os.makedirs(os.path.join(OUT, "dom"), exist_ok=True)
+    os.makedirs(os.path.join(OUT, DOM_DIR), exist_ok=True)
     cfgs = configs()
     assert cfgs[0] == V31 and len(cfgs) == 864
-    jobs = [(m, c, v, s, "dom", cfgs, os.path.join(OUT, "dom", "{}__{}.jsonl".format(name_of(m), c)))
-            for m in fine_matches() for c, v, s in CONDS]
+    jobs = [(m, c, None, 0, "dom", ds, cfgs, os.path.join(OUT, DOM_DIR, "{}__{}.jsonl".format(name_of(m), c)))
+            for m in fine_matches() for c, ds in CONDS_DOM]
     run_all(jobs, n_jobs)
 
 
 def cmd_select(_):
-    s, cfgs = table("dom", [c for c, _, _ in CONDS])
+    s, cfgs = table(DOM_DIR, [c for c, _ in CONDS_DOM])
     matches = sorted({m for per in s.values() for m in per})
     assert len(matches) == 10, matches
     s = {k: v for k, v in s.items() if len(v) == 10}
@@ -204,17 +212,21 @@ def cmd_check(args):
     n_jobs = int(args[args.index("--jobs") + 1]) if "--jobs" in args else 14
     sel = json.load(open(os.path.join(OUT, "select.json")))
     final = sel["final"]
+    if key(final) == key(V31):
+        print("final setting is v31: nothing to adopt")
+        print("RULE_4_6", "FAIL")
+        return
     cfgs = [V31, final]
     jobs = []
     for fam in ALT:
         os.makedirs(os.path.join(OUT, "alt_" + fam), exist_ok=True)
-        jobs += [(m, "rec", None, 0, "alt:" + fam, cfgs, os.path.join(OUT, "alt_" + fam, name_of(m) + "__rec.jsonl"))
+        jobs += [(m, "rec", None, 0, "alt:" + fam, 0, cfgs, os.path.join(OUT, "alt_" + fam, name_of(m) + "__rec.jsonl"))
                  for m in fine_matches()]
     os.makedirs(os.path.join(OUT, "raw"), exist_ok=True)
-    jobs += [(m, c, v, s, "raw", cfgs, os.path.join(OUT, "raw", "{}__{}.jsonl".format(name_of(m), c)))
+    jobs += [(m, c, v, s, "raw", 0, cfgs, os.path.join(OUT, "raw", "{}__{}.jsonl".format(name_of(m), c)))
              for m in fine_matches() for c, v, s in CONDS]
     os.makedirs(os.path.join(OUT, "sc"), exist_ok=True)
-    jobs += [(m, "rec", None, 0, "sc", cfgs, os.path.join(OUT, "sc", name_of(m) + "__rec.jsonl")) for m in sc_matches()]
+    jobs += [(m, "rec", None, 0, "sc", 0, cfgs, os.path.join(OUT, "sc", name_of(m) + "__rec.jsonl")) for m in sc_matches()]
     run_all(jobs, n_jobs)
     kv, kf = key(V31), key(final)
 

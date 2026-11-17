@@ -30,3 +30,9 @@ contacts that start short possessions are blurred away.
 recorded 0.462 (0.557). The loss is the smoothing and the noise (-0.085 as recorded), not the
 missing ball (-0.006). This motivates `calib/domain_decoder_rule.md` (v34), which re-chooses the
 decoder's own settings on the degraded balls.
+
+**Note added later (process audit, 2026-11-17).** The two 59% conditions of this test applied
+`drop_ball` before `nohold` (possession/touch_eval.py, `build_one`), the defect that Amendment 1 of
+calib/domain_decoder_rule.md later fixed for v34: the random gaps cut the stoppage holds, so in
+those conditions the stoppage ball stayed visible. v33 was not re-run; its as-recorded condition is
+not affected. Conditions 5-6 of calib/domain_rule.md were not run, because condition 1 had failed.

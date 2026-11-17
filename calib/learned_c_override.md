@@ -45,3 +45,10 @@ macroF1 0.7027, spellF1 0.4121, 16 possessions (truth 17); v31 had 0.9021 / 0.53
 dead-ball class is weak (F1 0.49): one 20 s stoppage called alive, then live play called dead.
 The rules make the window a correctness check, not a tuning set, so the result did not change
 the submission. No defect was found: the errors sit at three stoppages, not at a block edge.
+
+**Reverted (18 November about 01:35 UTC+4).** After the window score above, the team decided to
+return to v31, the version that the pre-committed rule had kept and the file submitted since
+16 November (SHA-256 f34036f0...). This decision came after the window score and is disclosed as
+such in the technical document (Section 3). Nothing was tuned on the window; no setting of v31
+changed. `learned_emissions` is False on main again; the v35c model file stays in the repository
+as a record.

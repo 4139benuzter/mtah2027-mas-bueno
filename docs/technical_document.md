@@ -2,13 +2,9 @@
 > `tectonic docs/technical_document.tex` after `python docs/figures.py`; the PDF is uploaded through the
 > submission form). This file is the longer working record it was condensed from.
 
-> **Submitted version: v35c, not v31.** This working record describes v31, the hand-built decoder. The
-> submission is v35c: the same decoder fed by a LightGBM classifier trained on the Metrica and DFL matches
-> of section 3, with degraded balls. v35c failed one condition of its own rule and was submitted by an
-> explicit override. Sections 1.6, 3, 5, 6, 7 and 8 of the PDF describe it; the rules and results are in
-> `calib/learned_rule.md`, `calib/learned_c_rule.md`, `calib/learned_c_result.md` and
-> `calib/learned_c_override.md`. The SHA-256 of the submitted file is
-> `ad4c1503e2ff5861d3e6dbeacd30b143efbae75f25c2390e4f0afbf45b2a5b01`; section 7 below gives v31's.
+> A parallel series of learned attempts (v32-v35c on branch `touch-detector`, `calib/learned_*`) was not
+> submitted; Section 3 of the PDF and `calib/learned_c_override.md` give its account, including one score of
+> v35c on the public window after it was frozen. The submission is v31 (SHA-256 below, section 7).
 
 # Frame-level ball possession from automatic tracking
 

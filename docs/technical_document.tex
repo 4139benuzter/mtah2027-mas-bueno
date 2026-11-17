@@ -74,8 +74,10 @@ of Section~3).
 \begin{tabularx}{\linewidth}{@{}Lrrrr@{}}
 \st{spellF1, official scorer} & \st{Metrica (3)} & \st{DFL (7)} & \st{SkillCorner (19)} & \st{Floor} \\
 \midrule
-Final version (v31) on labelled other matches\textsuperscript{*} & 0.576 & 0.454 & 0.550 & 0.2433 \\[-0.2em]
-\multicolumn{5}{@{}l}{\footnotesize\color{muted}\textsuperscript{*}Metrica and DFL: mean over the ball as recorded and cut to the competition's 59\% visibility (Section 5).} \\
+v31 (the hand-built decoder) on labelled other matches\textsuperscript{*} & 0.576 & 0.454 & 0.550 & 0.2433 \\
+Submitted hybrid: held-out gain over v31, degraded balls\textsuperscript{\dag} & $+0.040$ & $+0.031$ & -- & \\[-0.2em]
+\multicolumn{5}{@{}l}{\footnotesize\color{muted}\textsuperscript{*}Metrica and DFL: mean over the ball as recorded and cut to the competition's 59\% visibility (Section 5).} \\[-0.3em]
+\multicolumn{5}{@{}l}{\footnotesize\color{muted}\textsuperscript{\dag}Each match predicted by models trained on the other nine; the hybrid is described in Section 3.} \\
 \end{tabularx}
 \end{center}
 
@@ -93,6 +95,9 @@ stays with the last side. We therefore express every cue as a per-frame log-prob
 three states and let a Viterbi pass find the most probable sequence, with a cost charged for every
 change of state. The chain changes its answer only when evidence for the new state, accumulated
 over consecutive frames, outweighs that cost: this is what turns noisy frames into possessions.
+The submitted file adds one learned part (Section~3): where this decoder says the ball is alive, a
+gradient-boosted classifier trained only on other matches chooses the side; the decoder's dead-ball
+decisions are kept unchanged.
 
 \begin{figure}[h]
 \centering
@@ -219,7 +224,9 @@ Watched through our clip renderer to debug (how the keeper swaps were found) & i
 
 No label of this match was used, and nobody labelled any data by hand. The decoder has a single fitted number,
 the team-shape slope, fitted to the tracking's own pseudo-labels. Labelled data of \emph{other}
-matches was used only to measure versions and to choose or re-examine settings:
+matches was used to measure versions, to choose or re-examine settings, and to train the side
+classifier of the submitted hybrid (LightGBM, the 3 Metrica and 7 DFL matches with balls degraded to
+this match's statistics, every 10th graded frame, each also with the teams swapped; Section 3):
 
 \begin{center}\small
 \begin{tabularx}{\linewidth}{@{}P{2.75cm} P{1.75cm} L P{3.3cm}@{}}
@@ -229,7 +236,7 @@ matches was used only to measure versions and to choose or re-examine settings:
 Metrica sample matches 1--3\newline{\footnotesize\color{muted}\url{github.com/metrica-sports/sample-data}} & 3 (1,150) &
 Metrica's human event data, turned into frames with the competition definition by
 \code{possession/sample\_game.py} (owner changes only at an event in which a player plays the ball) &
-measuring versions; choosing v31's settings; re-examining constants \\
+training the side classifier; measuring versions; choosing v31's settings; re-examining constants \\
 DFL / Sportec open data\newline{\footnotesize\color{muted}Bassek et al.\ 2025, \emph{Sci.\ Data}, CC BY 4.0} & 7 (3,061) &
 the per-frame \code{BallPossession} and \code{BallStatus} of official DFL position data
 (\code{possession/dfl.py}): the same kind of source as the competition ground truth & the same \\
@@ -340,7 +347,7 @@ is $+0.020$ (Section~3).
 \begin{center}\small
 \begin{tabular}{@{}l l r r r r@{}}
 \toprule
-\st{Group} & \st{Ball} & \st{v30} & \st{v31 (final)} & \st{Possessions: labels} & \st{v31} \\
+\st{Group} & \st{Ball} & \st{v30} & \st{v31} & \st{Possessions: labels} & \st{v31} \\
 \midrule
 Metrica (3) & as recorded & 0.565 & \textbf{0.587} & 383 & 262 \\
 Metrica (3) & cut to 59\% & 0.547 & \textbf{0.570} & 383 & 254 \\
@@ -369,7 +376,7 @@ tracking only):
 \begin{center}\small
 \begin{tabular}{@{}l r r r@{}}
 \toprule
-\st{Check} & \st{v27} & \st{v30} & \st{v31 (final)} \\
+\st{Check} & \st{v27} & \st{v30} & \st{v31} \\
 \midrule
 possessions (mean length) & 209 (15.9\,s) & 242 (13.8\,s) & 284 (11.8\,s) \\
 possessions shorter than 2\,s & 7\% & 13\% & 16\% \\
@@ -385,7 +392,8 @@ The submitted hybrid gives 285 possessions (11.7\,s), 12\% shorter than 2\,s, 47
 94.6\% on the two dead-ball checks, and 80.4\% side agreement. Home share of alive time is 63\% for v31. Phases are not possessions (a phase can outlast several changes of
 side), so the side agreement is a sanity bound, not a target; the official baseline scores 67\% on it.
 
-On the public window, for information only (17 true possessions; never used to choose v31):
+On the public window, for information only (17 true possessions; never used to choose v31; the idea of the submitted hybrid came after the v35c score,
+Section~3):
 
 \begin{center}\small
 \begin{tabular}{@{}l r r r@{}}
@@ -395,7 +403,8 @@ On the public window, for information only (17 true possessions; never used to c
 \code{baseline\_smooth50} (official floor) & 0.6207 & 0.3256 & 26 \\
 ours, v27 & 0.9010 & 0.5143 & 11 \\
 ours, v30 & 0.9089 & 0.5286 & 11 \\
-ours, v31 (submitted; scored after it was frozen) & 0.9021 & 0.5375 & 15 \\
+ours, v31 (not submitted; scored after it was frozen) & 0.9021 & 0.5375 & 15 \\
+ours, hybrid (submitted) & \multicolumn{3}{r}{never scored on the window} \\
 ours, v35c (not submitted; scored once, Section~3) & 0.7027 & 0.4121 & 16 \\
 \bottomrule
 \end{tabular}
@@ -408,6 +417,10 @@ With 17 possessions the segment-bootstrap intervals of our versions overlap almo
 \section{Limitations, and what we would do with more time}
 
 \begin{itemize}
+\item The side classifier of the submitted hybrid was trained on Bundesliga and Metrica matches whose
+balls were degraded to this match's statistics; the players' tracking was not degraded, and its running-share
+input divides by all player slots (48 here, 26--40 in training). It improved every public match, but its effect
+on this match could not be measured. \emph{Next:} degrade the players too, and train a sequence model.
 \item The lost ball is the largest loss. On DFL, removing the ball down to the competition's 59\%
 visibility lowers v31 from 0.544 to 0.409. When the ball is missing we only hold the last state; filling short gaps with a straight line and placing hand-overs inside gaps changed nothing on other matches (Section~3), because the missing information is not in the tracking.
 \emph{Next:} a ball-carrier model learned from other matches' tracking (who is pressed, where the
@@ -442,8 +455,11 @@ python evaluation/validate\_submission.py "evaluation/results/Más Bueno.csv"
 Data go in \code{./data} as described in \code{DATA.md} (or \code{MTAH\_DATA\_DIR}). The run is
 deterministic: the same data give a byte-identical file (the hybrid, \code{hybrid = True} in \code{possession/model.py}), with SHA-256\\
 {\small\texttt{0743351ebdf0c96cb67d87029f8b148cfff06a33072921c691f034bc401fdbd5}}; with \code{hybrid = False} the same command gives v31's file\\
-{\small\texttt{f34036f02e246b42f314e1de70d7d6b1cc15aca906d65a686d6963a32604de2a}}, reproduced on two machines
-and with two numpy/pandas versions (pinned numpy 2.5.0 / pandas 3.0.3, and 2.3.5 / 3.0.0).
+{\small\texttt{f34036f02e246b42f314e1de70d7d6b1cc15aca906d65a686d6963a32604de2a}}. v31's file was reproduced on two machines and with two numpy/pandas versions (pinned numpy
+2.5.0 / pandas 3.0.3, and 2.3.5 / 3.0.0); the hybrid's file was regenerated from a fresh clone with the pinned
+versions. The classifier runs from the committed trees in \code{calib/learned\_model.json} with numpy
+only; re-training it needs \code{requirements-train.txt} (LightGBM 4.7.0) and \code{hpc/learned.pbs}. The
+held-out test of the hybrid is \code{calib/hybrid\_test.py}, with its output in \code{calib/hybrid\_test\_output.txt}.
 
 The validation is reproducible from public data only. \code{possession/validate.py} scores the current
 decoder on one match; \code{possession/grid.py} with \code{grid\_select.py}, \code{three\_group.py} and

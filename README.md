@@ -3,7 +3,7 @@
 > **Team Más Bueno:** our solution and the one command that regenerates our submission are in
 > [SOLUTION.md](SOLUTION.md); the technical document is [docs/technical_document.pdf](docs/technical_document.pdf)
 > (LaTeX source [docs/technical_document.tex](docs/technical_document.tex); longer working record
-> [docs/technical_document.md](docs/technical_document.md)).
+> [docs/technical_document.md](docs/technical_document.md)). Submitted version: the hybrid (`calib/hybrid_rule.md`).
 
 **Organised by [Metrica Sports](https://metrica-sports.com), [FC Barcelona](https://www.fcbarcelona.com)
 and the [Mobile World Capital Barcelona](https://www.mwcbarcelona.com)**, at the Talent Arena in Barcelona.

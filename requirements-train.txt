@@ -6,3 +6,5 @@ lightgbm==4.7.0
 numpy==2.5.0
 pandas==3.0.3
 scipy==1.18.1
+# The BiGRU side model (calib/gru_train.py) was trained with PyTorch 2.11.0+cu128 on an RTX 5070 Laptop GPU.
+torch==2.11.0

@@ -67,7 +67,8 @@ class Params:
     transition_weight = 0.5  # nats per frame
     short_possessions = False  # v32 filter (touches.py): passed its rule but did not transfer (calib/touch_result.md); off
     learned_emissions = False  # v35c (calib/learned_c_rule.md): pushed by override, then reverted before the deadline (calib/learned_c_override.md); off
-    hybrid = True              # D from v31, sides from v35c (calib/hybrid_rule.md)
+    hybrid = False             # D from v31, sides from v35c (calib/hybrid_rule.md)
+    gru_hybrid = True          # D from v31, sides from the BiGRU (calib/gru_model.npz); off unless it passes its rule
     # v32 candidates. Every default reproduces v31 exactly; values other than these are only
     # ever chosen on labelled OTHER matches (possession/bench.py, rule in calib/v32_rule.md).
     run_dead_hi_lost = None  # P(D) when nobody is running and the ball is not tracked (None: run_dead_hi)

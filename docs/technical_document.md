@@ -4,8 +4,8 @@
 
 > A parallel series of learned attempts (v32-v35c on branch `touch-detector`, `calib/learned_*`) was not
 > submitted; Section 3 of the PDF and `calib/learned_c_override.md` give its account, including one score of
-> v35c on the public window after it was frozen. The submission is the hybrid (v31's dead ball, v35c's sides;
-> `calib/hybrid_rule.md`), SHA-256 `0743351ebdf0c96cb67d87029f8b148cfff06a33072921c691f034bc401fdbd5`; section 7 below gives v31's own file.
+> v35c on the public window after it was frozen. The submission is the GRU hybrid (v31's dead ball, a BiGRU's sides;
+> `calib/gru_rule.md`), SHA-256 `2824617531b9bcda2e2be323294df14c631589fe21ff40fed279cac825065504`; section 7 below gives v31's own file.
 
 # Frame-level ball possession from automatic tracking
 

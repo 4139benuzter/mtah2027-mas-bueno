@@ -51,6 +51,26 @@ def learned_path(trk, feat, log_e, graded, n, fps, pitch, params):
     return LM.decode(prob, log_e - log_e0, feat, diag0["eps"], model["decode"], fps)
 
 
+def gru_path(trk, feat, log_e, graded, n, fps, pitch, params):
+    """BiGRU side model (calib/gru_model.npz), decoded like v35c. Copy of learned_path with the GRU in place of the trees.: the learned frame model, decoded as in training. Its inputs are
+    v31's tag-free pieces, exactly as on the public matches; v31's Smart Tagging terms (log_e with
+    tags minus log_e without) are added to its log-probabilities unchanged."""
+    from possession import learned as LM
+    from possession import episodes as EP
+    model = LM.load_model()
+    log_e0, diag0 = emissions(feat, np.zeros(n), [], [], [], graded, n, fps, params)
+    inplay = feat["visible"] & ~feat["oob"]
+    share, _, _, kind_of = EP.home_share(feat, inplay, fps)
+    costs0 = gated_team_costs(diag0["eps"], n, fps, params)
+    path0 = merge_short_dead(viterbi(log_e0, params.switch_team, params.switch_dead, costs0), fps, params)
+    path0 = snap_dead_onsets(path0, feat, fps, params)
+    halves = [(first, last) for _, first, last in half_video_blocks(GAME)]
+    f = LM.frame_features(trk, feat, log_e0, path0, share, kind_of, diag0["eps"], pitch, halves)
+    X = np.stack([f[k] for k in model["features"]], axis=1)
+    from possession import gru as GR
+    prob = np.clip(GR.predict(GR.load(), X), 1e-6, 1.0)
+    return LM.decode(prob, log_e - log_e0, feat, diag0["eps"], model["decode"], fps)
+
 def build(params=Params, verbose=True):
     g = GAMES[GAME]
     n, fps, pitch = g["n_video_frames"], g["fps"], g["pitch"]
@@ -88,6 +108,10 @@ def build(params=Params, verbose=True):
     path = snap_dead_onsets(path, feat, fps, params)
     if params.learned_emissions:
         path = learned_path(trk, feat, log_e, graded, n, fps, pitch, params)
+    if params.gru_hybrid:
+        # D from v31, the side from the BiGRU where it says H or A
+        pg = gru_path(trk, feat, log_e, graded, n, fps, pitch, params)
+        path = np.where(path == 2, 2, np.where(pg != 2, pg, path))
     if params.hybrid:
         # calib/hybrid_rule.md: dead ball from v31, the side from v35c where v35c says H or A
         p35 = learned_path(trk, feat, log_e, graded, n, fps, pitch, params)

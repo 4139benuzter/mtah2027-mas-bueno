@@ -1,9 +1,9 @@
 # Our solution: possession from control episodes
 
-> **Submitted version: the hybrid.** The file keeps the dead-ball decisions of the hand-built decoder below (v31) and,
+> **Submitted version: the GRU hybrid** (`Params.gru_hybrid = True`; the side comes from a BiGRU in `calib/gru_model.npz`, run with numpy by `possession/gru.py`, rule `calib/gru_rule.md`). The first hybrid, kept for reference: The file keeps the dead-ball decisions of the hand-built decoder below (v31) and,
 > where it says the ball is alive, takes the side from a LightGBM classifier trained only on ten other matches with
 > public labels (`calib/learned_model.json`, run with numpy; `Params.hybrid = True` in `possession/model.py`).
-> Rule and result: `calib/hybrid_rule.md`. SHA-256 of the file: `0743351ebdf0c96cb67d87029f8b148cfff06a33072921c691f034bc401fdbd5`.
+> Rule and result: `calib/hybrid_rule.md`. SHA-256 of the submitted file: `2824617531b9bcda2e2be323294df14c631589fe21ff40fed279cac825065504`.
 
 This fork adds `possession/`, a tracking-only pipeline that labels every frame of the tactical
 video as `H` / `A` / `D`. It reads the provided ATD and Smart Tagging through `games.py`, uses no

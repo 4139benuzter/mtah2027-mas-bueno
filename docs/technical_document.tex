@@ -50,7 +50,7 @@
 Aaron Binoj Amacadu \qquad James Joshua Koshy \qquad Karthik Nambiar Puthiyedathu Velluva\par
 \vspace{0.6em}
 {\small More Than A Hack 2027, Phase 1 -- technical document -- 17 November 2026\par
-Code: \url{https://github.com/4139benuzter/mtah2027-mas-bueno} \par Submission file (hybrid), SHA-256 \texttt{0743351ebdf0c96c\ldots{}91c691f034bc401fdbd5}\par}
+Code: \url{https://github.com/4139benuzter/mtah2027-mas-bueno} \par Submission file (GRU hybrid), SHA-256 \texttt{2824617531b9bcda\ldots{}fed279cac825065504}\par}
 \end{center}
 \vspace{0.5em}
 
@@ -65,7 +65,7 @@ label of this match was used, and the pipeline (numpy and pandas, about 15\,s on
 no language model. Every setting that is not a physical or football quantity was chosen on
 \emph{other} labelled matches, by selection rules committed to the repository before their results
 existed. The submitted file keeps this decoder's dead-ball decisions and, where the ball is
-alive, takes the side from a gradient-boosted classifier trained only on other matches (the hybrid
+alive, takes the side from a bidirectional GRU network trained only on other matches (the GRU hybrid
 of Section~3).
 
 \end{abstract}
@@ -75,7 +75,7 @@ of Section~3).
 \st{spellF1, official scorer} & \st{Metrica (3)} & \st{DFL (7)} & \st{SkillCorner (19)} & \st{Floor} \\
 \midrule
 v31 (the hand-built decoder) on labelled other matches\textsuperscript{*} & 0.576 & 0.454 & 0.550 & 0.2433 \\
-Submitted hybrid: held-out gain over v31, degraded balls\textsuperscript{\dag} & $+0.040$ & $+0.031$ & -- & \\[-0.2em]
+Submitted GRU hybrid: held-out gain over v31, degraded balls\textsuperscript{\dag} & $+0.108$ & $+0.100$ & -- & \\[-0.2em]
 \multicolumn{5}{@{}l}{\footnotesize\color{muted}\textsuperscript{*}Metrica and DFL: mean over the ball as recorded and cut to the competition's 59\% visibility (Section 5).} \\[-0.3em]
 \multicolumn{5}{@{}l}{\footnotesize\color{muted}\textsuperscript{\dag}Each match predicted by models trained on the other nine; the hybrid is described in Section 3.} \\
 \end{tabularx}
@@ -96,7 +96,7 @@ three states and let a Viterbi pass find the most probable sequence, with a cost
 change of state. The chain changes its answer only when evidence for the new state, accumulated
 over consecutive frames, outweighs that cost: this is what turns noisy frames into possessions.
 The submitted file adds one learned part (Section~3): where this decoder says the ball is alive, a
-gradient-boosted classifier trained only on other matches chooses the side; the decoder's dead-ball
+bidirectional GRU network trained only on other matches chooses the side; the decoder's dead-ball
 decisions are kept unchanged.
 
 \begin{figure}[h]
@@ -225,7 +225,7 @@ Watched through our clip renderer to debug (how the keeper swaps were found) & i
 No label of this match was used, and nobody labelled any data by hand. The decoder has a single fitted number,
 the team-shape slope, fitted to the tracking's own pseudo-labels. Labelled data of \emph{other}
 matches was used to measure versions, to choose or re-examine settings, and to train the side
-classifier of the submitted hybrid (LightGBM, the 3 Metrica and 7 DFL matches with balls degraded to
+models of the hybrids (LightGBM for the first, a bidirectional GRU for the submitted one; the 3 Metrica and 7 DFL matches with balls degraded to
 this match's statistics, every 10th graded frame, each also with the teams swapped; Section 3):
 
 \begin{center}\small
@@ -236,7 +236,7 @@ this match's statistics, every 10th graded frame, each also with the teams swapp
 Metrica sample matches 1--3\newline{\footnotesize\color{muted}\url{github.com/metrica-sports/sample-data}} & 3 (1,150) &
 Metrica's human event data, turned into frames with the competition definition by
 \code{possession/sample\_game.py} (owner changes only at an event in which a player plays the ball) &
-training the side classifier; measuring versions; choosing v31's settings; re-examining constants \\
+training the side models; measuring versions; choosing v31's settings; re-examining constants \\
 DFL / Sportec open data\newline{\footnotesize\color{muted}Bassek et al.\ 2025, \emph{Sci.\ Data}, CC BY 4.0} & 7 (3,061) &
 the per-frame \code{BallPossession} and \code{BallStatus} of official DFL position data
 (\code{possession/dfl.py}): the same kind of source as the competition ground truth & the same \\
@@ -290,13 +290,22 @@ on the public window, for information: macroF1 0.7027, spellF1 0.4121 (Section~5
 stoppage alive. The team then returned to v31, the version the pre-committed rule had kept and the file
 submitted since 16 November, before the deadline. \textbf{This last decision came after that window score,} and
 we disclose it as such; nothing was tuned on the window, and no setting of v31 changed.
-\item \st{The submitted hybrid} (\code{calib/hybrid\_rule.md}, committed at 02:14 UTC+4 before any
+\item \st{The first hybrid} (\code{calib/hybrid\_rule.md}, committed at 02:14 UTC+4 before any
 hybrid number). Dead ball from v31; where v31 says the ball is alive, the side from v35c where v35c says
 home or away, otherwise v31's side. Held out on the ten public matches it gained $+0.034$ spellF1 over v31
 (10 of 10 matches; Metrica $+0.040$, DFL $+0.031$) and about $+0.01$ macroF1; on this match it gives 285
-possessions (v31: 284) and v31's dead-ball checks (Section~5). It passed every condition of its rule and
-is the submitted file. The idea came after v35c's window score showed weak dead-ball timing; we disclose
+possessions (v31: 284) and v31's dead-ball checks (Section~5). It passed every condition of its rule. The idea came after v35c's window score showed weak dead-ball timing; we disclose
 that. The hybrid itself was never scored on the window.
+\item \st{The submitted GRU hybrid} (\code{calib/gru\_rule.md}). Before any result (about 02:37 UTC+4, stated
+in the team's chat, committed with the result) the rule was: a held-out gain of at least $+0.010$ over the first
+hybrid, on at least 8 of the 10 matches, positive for Metrica and for DFL. A bidirectional GRU (two layers of 64
+units over 30\,s windows of the same 67 features, trained on the same degraded matches with the teams
+swapped) replaces the trees for the side; the dead ball stays v31's. Held out on the ten public matches it scored
+0.564 against 0.495 for the first hybrid ($+0.069$, 10 of 10; v31 0.462), and on this match it gives 293
+possessions (v31: 284), v31's dead-ball checks and 80.2\% side agreement. It runs in numpy from
+\code{calib/gru\_model.npz} (equal to PyTorch within $2\times10^{-7}$). The GRU alone scored 0.656 held out
+but was not used: its own dead-ball calls carry the risk that v35c showed on this match. It was built and
+tested in the last hour before the deadline.
 \end{itemize}
 
 The public 5-minute window was used to confirm alignment and file format and
@@ -404,7 +413,7 @@ Section~3):
 ours, v27 & 0.9010 & 0.5143 & 11 \\
 ours, v30 & 0.9089 & 0.5286 & 11 \\
 ours, v31 (not submitted; scored after it was frozen) & 0.9021 & 0.5375 & 15 \\
-ours, hybrid (submitted) & \multicolumn{3}{r}{never scored on the window} \\
+ours, GRU hybrid (submitted) & \multicolumn{3}{r}{never scored on the window} \\
 ours, v35c (not submitted; scored once, Section~3) & 0.7027 & 0.4121 & 16 \\
 \bottomrule
 \end{tabular}
@@ -417,7 +426,7 @@ With 17 possessions the segment-bootstrap intervals of our versions overlap almo
 \section{Limitations, and what we would do with more time}
 
 \begin{itemize}
-\item The side classifier of the submitted hybrid was trained on Bundesliga and Metrica matches whose
+\item The side model of the submitted hybrid (a BiGRU, built in the last hour) was trained on Bundesliga and Metrica matches whose
 balls were degraded to this match's statistics; the players' tracking was not degraded, and its running-share
 input divides by all player slots (48 here, 26--40 in training). It improved every public match, but its effect
 on this match could not be measured. \emph{Next:} degrade the players too, and train a sequence model.
@@ -453,12 +462,15 @@ python evaluation/validate\_submission.py "evaluation/results/Más Bueno.csv"
 \end{quote}
 
 Data go in \code{./data} as described in \code{DATA.md} (or \code{MTAH\_DATA\_DIR}). The run is
-deterministic: the same data give a byte-identical file (the hybrid, \code{hybrid = True} in \code{possession/model.py}), with SHA-256\\
-{\small\texttt{0743351ebdf0c96cb67d87029f8b148cfff06a33072921c691f034bc401fdbd5}}; with \code{hybrid = False} the same command gives v31's file\\
+deterministic: the same data give a byte-identical file (the GRU hybrid, \code{gru\_hybrid = True} in \code{possession/model.py}), with SHA-256\\
+{\small\texttt{2824617531b9bcda2e2be323294df14c631589fe21ff40fed279cac825065504}}; with both switches off the same command gives v31's file\\
 {\small\texttt{f34036f02e246b42f314e1de70d7d6b1cc15aca906d65a686d6963a32604de2a}}. v31's file was reproduced on two machines and with two numpy/pandas versions (pinned numpy
 2.5.0 / pandas 3.0.3, and 2.3.5 / 3.0.0); the hybrid's file was regenerated from a fresh clone with the pinned
 versions. The classifier runs from the committed trees in \code{calib/learned\_model.json} with numpy
-only; re-training it needs \code{requirements-train.txt} (LightGBM 4.7.0) and \code{hpc/learned.pbs}. The
+only, and the BiGRU from \code{calib/gru\_model.npz} with numpy only (\code{possession/gru.py}); re-training
+needs \code{requirements-train.txt} (LightGBM 4.7.0, PyTorch 2.11 with CUDA), \code{hpc/learned.pbs} and
+\code{calib/gru\_train.py}; the BiGRU's held-out test is \code{calib/gru\_lomo.py} with output in
+\code{calib/gru\_lomo\_output.txt}. The
 held-out test of the hybrid is \code{calib/hybrid\_test.py}, with its output in \code{calib/hybrid\_test\_output.txt}.
 
 The validation is reproducible from public data only. \code{possession/validate.py} scores the current

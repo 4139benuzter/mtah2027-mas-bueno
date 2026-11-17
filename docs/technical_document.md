@@ -373,6 +373,28 @@ With only 17 possessions in the window the segment-bootstrap intervals of the tw
 ours overlap almost entirely (about 0.31 to 0.72 for both), so the window cannot tell them
 apart; EVALUATION.md shows why it should not be asked to.
 
+**Attempts after v31 that we did not adopt (16-17 November).** Six further attempts, each with an
+adoption rule committed before its result (two rules were amended before their results were read;
+the rule files say how), all on the ten labelled other matches of section 3 (the
+public window was never scored). The rules, results and code are on branch `touch-detector`
+(`calib/touch_*`, `calib/domain_*`, `calib/learned_*`). None changed the submission.
+
+| attempt | what | held-out gain | why not adopted |
+|---|---|---|---|
+| v32 | learned filter for short possessions (`touches.py`) | +0.044 | passed its rule, but its gain was about zero on a ball like the competition's (soft at contacts); kept off |
+| v32b | v32 without the velocity-change feature | +0.039 | failed its transfer check |
+| v33 | v32 retrained on public balls degraded to match the competition ball | -0.0004 | failed |
+| v34 | v31's decoder settings re-chosen on the degraded balls | +0.0096 | failed (threshold +0.010; Metrica negative) |
+| v35 | gradient-boosted frame model (LightGBM) as emissions | +0.125 | failed its transfer check: 35% more possessions than v31 on the competition match, against at most 18% on any tested match |
+| v35c | v35 with v31's decoder setting (one shot) | +0.119 | failed the same check: 22% more possessions, against at most 6% on the ten public matches |
+
+The degradation (`possession/degrade.py`, `calib/domain_choice.json`) was fitted to 17 label-free
+summary statistics of the competition match's tracking (`calib/domain_target.json`: medians,
+percentiles, shares and rates of the ball's speed, its changes of velocity, its distances to the
+players and its missing frames), computed over the whole match without labels and tied to no frame;
+they are rebuilt by `python -m possession.degrade target`. Six attempts on the same ten
+matches make any single pass weaker evidence than its threshold suggests; we disclose them all.
+
 ## 6. Limitations
 
 - Possessions shorter than about 2 s are mostly missed. In the public window the short
@@ -445,6 +467,11 @@ assistant's program runs on the team's machine, but its language model runs on A
 servers, so what the assistant reads is sent there. We used it to write code and to run our own
 scripts. We did not give it the match data files, the video, or extracts of them: it saw file
 and folder names and the summary output that our scripts print (counts, shares and scores).
+For the attempts of section 5 that summary output included the 17 aggregate statistics of the
+competition match's tracking in `calib/domain_target.json` and a summary of its missing ball
+frames; sub-agents of the same assistant used those 17 numbers to fit the degradation of the
+public matches, and otherwise worked on public data only. Training runs on public data used a
+university computing cluster; the competition data stayed on our own machine.
 It also read the public material: this repository, including the public 5-minute ground truth,
 and the public data of other matches (section 3). The pipeline itself contains no LLM and no
 call to any service.

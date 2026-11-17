@@ -29,6 +29,26 @@ def graded_mask(n):
     return graded
 
 
+def learned_path(trk, feat, log_e, graded, n, fps, pitch, params):
+    """v35 (calib/learned_rule.md): the learned frame model, decoded as in training. Its inputs are
+    v31's tag-free pieces, exactly as on the public matches; v31's Smart Tagging terms (log_e with
+    tags minus log_e without) are added to its log-probabilities unchanged."""
+    from possession import learned as LM
+    from possession import episodes as EP
+    model = LM.load_model()
+    log_e0, diag0 = emissions(feat, np.zeros(n), [], [], [], graded, n, fps, params)
+    inplay = feat["visible"] & ~feat["oob"]
+    share, _, _, kind_of = EP.home_share(feat, inplay, fps)
+    costs0 = gated_team_costs(diag0["eps"], n, fps, params)
+    path0 = merge_short_dead(viterbi(log_e0, params.switch_team, params.switch_dead, costs0), fps, params)
+    path0 = snap_dead_onsets(path0, feat, fps, params)
+    halves = [(first, last) for _, first, last in half_video_blocks(GAME)]
+    f = LM.frame_features(trk, feat, log_e0, path0, share, kind_of, diag0["eps"], pitch, halves)
+    X = np.stack([f[k] for k in model["features"]], axis=1)
+    prob = LM.predict_json(model, X)
+    return LM.decode(prob, log_e - log_e0, feat, diag0["eps"], model["decode"], fps)
+
+
 def build(params=Params, verbose=True):
     g = GAMES[GAME]
     n, fps, pitch = g["n_video_frames"], g["fps"], g["pitch"]
@@ -60,6 +80,8 @@ def build(params=Params, verbose=True):
     team_costs = gated_team_costs(diag["eps"], n, fps, params) if params.gate_switches else None
     path = merge_short_dead(viterbi(log_e, cost_team, cost_dead, team_costs), fps, params)
     path = snap_dead_onsets(path, feat, fps, params)
+    if params.learned_emissions:
+        path = learned_path(trk, feat, log_e, graded, n, fps, pitch, params)
     if params.short_possessions:
         # Possessions shorter than the decoder can see, from a filter trained on other matches
         # only (possession/touches.py, calib/touch_rule.md, calib/touch_weights.json).

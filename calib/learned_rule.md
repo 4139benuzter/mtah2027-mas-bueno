@@ -48,3 +48,41 @@ learned emissions; the technical document describes v35 and the attempts v32-v34
 regenerated from main and uploaded again. **Otherwise** v31 stays.
 
 The public window is not scored for this decision.
+
+## Amendment 1 (2026-11-17, committed before any v35 result was read)
+
+**Status at this commit.** HPC job 37825 (code a509fff) finished at 15:17 (UTC+4) with `select` and
+`final`. Its outputs were copied to the laptop but not read; only the error count and file counts
+were checked. Before this amendment, two independent audits reported:
+- process audit: no lower bound on SkillCorner; no transfer condition (v32 passed its conditions
+  1-3 strongly and did not transfer); five adaptive attempts on the same ten matches;
+- technical audit: the model can lean on "ball missing = dead ball", which holds almost exactly in
+  the degraded public matches. In an indicative replica (not this rule's test: one model trained
+  on 8 matches, seed 0, the first GRID setting) the held-out gains on metrica2 and J03WOH were
+  +0.149 and +0.195, +0.035 and +0.091 with 15% of alive frames missing, and below zero with 30%.
+  We saw these replica numbers before writing this amendment.
+- label-free measurement: on the competition match the ball is missing on 9.2% of graded frames
+  where more than 20% of players run (degraded DFL 2.3-4.3%, degraded Metrica 5.5-10.4%,
+  SkillCorner 4.6-8.8%). The tracker's speed channel and speed from positions give nearly the same
+  running share (median 0.084 and 0.090).
+
+**Added conditions** (all must also hold; no original condition is relaxed):
+- 4b. SkillCorner mean gain >= -0.005.
+- 7a. transfer: the ratio of possessions v35/v31 on the competition match lies within the range of
+  that ratio over the ten held-out public matches (degraded, seed 0, the final decoding setting),
+  widened by 10% at each end.
+- 7b. transfer: the share of graded frames whose label v35 changes from v31 on the competition
+  match lies within the range of that share over the same ten held-out matches, widened by 5 points.
+- 8. stress: each held-out match gets extra gaps of 0.4-3 s on graded frames where more than 20% of
+  players run, until it reaches the competition's 9.2% (none where it is already above); with the
+  held-out models and decoding picks unchanged and v31 re-run on the same ball, the mean held-out
+  gain is >= +0.010, and > 0 within Metrica and within DFL (`python -m possession.learned_eval stress`).
+
+**Kept, with reasons.** The bound on possessions shorter than 2 s stays at 37.4%, the highest true
+share among the ten matches; 7a guards against fragmentation directly.
+
+**Known limits, not fixed now** (a fix needs retraining; they are disclosed if v35 is adopted): the
+feature `area` has the wrong team-swap rule (signal lost, no leakage); SkillCorner's halves and
+kick-offs come from its labels in both arms; v31's Smart Tagging terms enter v35's decoder unscaled
+and untested on public data (a label-free diagnostic is reported); frames outside the half blocks
+are decoded through.

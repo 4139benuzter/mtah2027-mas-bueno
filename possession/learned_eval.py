@@ -212,6 +212,82 @@ def cmd_select(args):
     print("RULE_1_3", "PASS" if ok1 and ok2 and ok3 else "FAIL")
 
 
+# --- Amendment 1 of calib/learned_rule.md: stress test with gaps in live play -----------------------
+# The competition ball is missing on 9.2% of graded frames where more than 20% of players run
+# (label-free); the degraded DFL balls on 2-4%. A model that learned "missing ball = dead ball"
+# would lose its gain there. Each held-out match gets extra gaps (0.4-3 s) on such frames until
+# it reaches the competition's rate; v35 (held-out model, its own decode pick) and v31 are both
+# re-run on that ball.
+STRESS_RATE = 0.092
+
+
+def live_gaps(ball, run, graded, rate, seed):
+    rng = np.random.default_rng(1000 + seed)
+    b = ball.copy()
+    live = graded & (run > 0.2)
+    target = rate * live.sum()
+    missing = int((live & np.isnan(b[:, 0])).sum())
+    cand = np.flatnonzero(live & np.isfinite(b[:, 0]))
+    while missing < target and len(cand):
+        s = int(rng.choice(cand))
+        seg = slice(s, min(len(b), s + int(rng.integers(10, 76))))
+        missing += int((live[seg] & np.isfinite(b[seg, 0])).sum())
+        b[seg] = np.nan
+    return b
+
+
+def stress_job(job):
+    match, seed = job
+    name = GD.name_of(match)
+    out = os.path.join(OUT, "stress", "{}__s{}.json".format(name, seed))
+    if os.path.isfile(out):
+        return out
+    import lightgbm as lgb
+    d = np.load(set_path(name, seed))
+    trk, labels, info = GD.load(match)
+    graded = labels != "X"
+    pitch = info.get("pitch", (105.0, 68.0))
+    halves = [(a, b) for _, a, b in info["halves"]]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        trk["ball"] = d["ball"]
+        run = np.nan_to_num(features.compute(trk, pitch, 25, kickoffs=info["kickoffs"])["frac_run"], nan=0.0)
+        trk["ball"] = live_gaps(d["ball"], run, graded, STRESS_RATE, seed)
+        feat, log_e0, eps, share, kind, path0 = LM.v31_inputs(trk, pitch, info["kickoffs"], graded)
+        f = LM.frame_features(trk, feat, log_e0, path0, share, kind, eps, pitch, halves)
+    X = np.stack([f[k] for k in sorted(f)], axis=1)
+    booster = lgb.Booster(model_file=os.path.join(OUT, "models", "excl_" + name + ".txt"))
+    prob = booster.predict(X, num_threads=2)
+    cfg = json.load(open(os.path.join(OUT, "select.json")))["picks"][name]
+    path = LM.decode(prob, 0.0, feat, eps, cfg)
+    gt = pm.label_codes(labels)
+    res = {}
+    for tag, p in (("v35", path), ("v31", path0)):
+        pred = np.full(len(gt), pm.X, dtype=np.int8)
+        pred[graded] = p[graded]
+        res[tag] = pm.evaluate(gt, pred)["spell_f1_mean"]
+    live = graded & (run > 0.2)
+    res["live_missing"] = float(np.isnan(trk["ball"][live, 0]).mean())
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    json.dump(res, open(out, "w"))
+    return out
+
+
+def cmd_stress(args):
+    n_jobs = int(args[args.index("--jobs") + 1]) if "--jobs" in args else 14
+    jobs = [(m, s) for m in GD.fine_matches() for s in SEEDS]
+    with ProcessPoolExecutor(n_jobs) as pool:
+        list(pool.map(stress_job, jobs))
+    gains, rates = {}, {}
+    for m in GD.fine_matches():
+        name = GD.name_of(m)
+        per = [json.load(open(os.path.join(OUT, "stress", "{}__s{}.json".format(name, s)))) for s in SEEDS]
+        gains[name] = float(np.mean([p["v35"] - p["v31"] for p in per]))
+        rates[name] = float(np.mean([p["live_missing"] for p in per]))
+    json.dump({"gains": gains, "live_missing": rates}, open(os.path.join(OUT, "stress.json"), "w"), indent=1)
+    print("stress written")
+
+
 def export(booster, cfg, names):
     dump = booster.dump_model()
     return {"features": names, "num_class": 3, "trees": dump["tree_info"], "decode": cfg,
@@ -250,4 +326,4 @@ def cmd_final(args):
 
 if __name__ == "__main__":
     cmd = sys.argv[1]
-    {"build": cmd_build, "select": cmd_select, "final": cmd_final}[cmd](sys.argv[2:])
+    {"build": cmd_build, "select": cmd_select, "final": cmd_final, "stress": cmd_stress}[cmd](sys.argv[2:])

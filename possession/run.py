@@ -18,6 +18,7 @@ from possession.keepers import fix_keepers  # noqa: E402
 from possession import features, tagging  # noqa: E402
 from possession.model import Params, emissions, switch_costs, viterbi, merge_short_dead, snap_dead_onsets, gated_team_costs, KICKOFF_FRAMES  # noqa: E402
 from possession.model import merge_same_side_dead, clean_short_spells, place_handovers_in_gaps  # noqa: E402
+from possession.model import snap_dead_to_exit, backdate_turnovers  # noqa: E402
 
 RESULTS_DIR = os.path.join(ROOT, "evaluation", "results")
 KICKOFF_2ND = 113742     # published in DATA.md / FAQ.md
@@ -65,8 +66,10 @@ def build(params=Params, verbose=True):
     path = merge_short_dead(viterbi(log_e, cost_team, cost_dead, team_costs), fps, params)
     path = merge_same_side_dead(path, fps, params)
     path = snap_dead_onsets(path, feat, fps, params)
+    path = snap_dead_to_exit(path, feat, fps, params)
     path = clean_short_spells(path, fps, params)
     path = place_handovers_in_gaps(path, feat, fps, params)
+    path = backdate_turnovers(path, feat, fps, params)
 
     labels = np.full(n, "X", dtype="<U1")
     letters = np.array(["H", "A", "D"])

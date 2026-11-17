@@ -74,6 +74,10 @@ class Params:
     # v33 candidates (same convention: every default reproduces v31; calib/v33_rule.md).
     ball_gap_fill_s = 0.0    # ball gaps up to this long are filled by a straight line (0: off)
     gap_handover_s = 0.0     # a change of side right after a ball gap up to this long moves to its middle
+    # v34 candidates, ideas read in other teams' public repositories (calib/v34_rule.md).
+    exit_snap = False        # a stoppage starts where the ball is seen leaving the pitch
+    oob_reentry_s = 0.0      # an out-of-pitch sighting back in play within this long is not a stoppage
+    turnover_backdate_s = 0.0  # a change of side moves back over frames where the new side is on the ball
 
 
 def fit_shape_logit(feat, graded):
@@ -115,7 +119,21 @@ def emissions(feat, tag_prior, set_pieces, goals, transitions, graded, n, fps, p
     rest = np.nan_to_num(feat["rest_frac"], nan=0.0)
     pd = np.where(rest > 0.9, np.maximum(pd, p.rest_dead), pd)
     pd = np.where(feat["hold"], np.maximum(pd, p.hold_dead), pd)
-    pd = np.where(oob, np.maximum(pd, p.oob_dead), pd)
+    oob_d = oob
+    if p.oob_reentry_s > 0:
+        # A ball drawn outside the lines that is back in play, moving, within oob_reentry_s was in
+        # the air (projected outside), not out: its out-of-pitch frames are not dead evidence.
+        lag = int(round(p.oob_reentry_s * fps))
+        back = visible & ~oob & (np.nan_to_num(feat["v_ball_s"], nan=0.0) > 3.0)
+        nxt = np.full(n + 1, n + lag + 1)
+        for f in range(n - 1, -1, -1):
+            nxt[f] = f if back[f] else nxt[f + 1]
+        edges = np.diff(np.concatenate(([0], oob.astype(np.int8), [0])))
+        oob_d = oob.copy()
+        for a, b in zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)):
+            if b - a <= lag and nxt[b] - b <= lag:
+                oob_d[a:b] = False
+    pd = np.where(oob_d, np.maximum(pd, p.oob_dead), pd)
     pd = np.where(feat["line_carry"], np.maximum(pd, p.carry_dead), pd)
     pd = np.where(feat["ignored"], np.maximum(pd, p.ignored_dead), pd)
     v_ball = np.nan_to_num(feat["v_ball_s"], nan=0.0)
@@ -382,6 +400,61 @@ def place_handovers_in_gaps(path, feat, fps, p=Params):
         if g_start <= a_prev or g_end - g_start > max_gap:
             continue
         path[(g_start + g_end) // 2:t] = k
+    return path
+
+
+def snap_dead_to_exit(path, feat, fps, p=Params):
+    """Start each stoppage where the ball is seen leaving the pitch, when it is.
+
+    If the first out-of-pitch sighting comes within 5 s after the D start, with an in-pitch
+    sighting before it, the D start moves forward to it; otherwise, if within 3 s before the D
+    start the ball was seen in the pitch and then outside, the D start moves back to that exit.
+    Never creates a stoppage or moves its end; at least 2 s of each stoppage remain.
+    """
+    if not p.exit_snap:
+        return path
+    path = path.copy()
+    out = feat["oob"]
+    inside = feat["visible"] & ~out
+    fwd, bwd, keep = int(5 * fps), int(3 * fps), int(2 * fps)
+    for a, b, k in _runs(path):
+        if k != D or a == 0:
+            continue
+        seg = np.flatnonzero(out[a:min(b - keep, a + fwd)])
+        if len(seg) and inside[a:a + seg[0]].any():
+            path[a:a + seg[0]] = path[a - 1]
+            continue
+        w0 = max(0, a - bwd)
+        ins = np.flatnonzero(inside[w0:a])
+        if len(ins):
+            after = np.flatnonzero(out[w0 + ins[-1]:a])
+            if len(after):
+                path[w0 + ins[-1] + after[0]:a] = D
+    return path
+
+
+def backdate_turnovers(path, feat, fps, p=Params):
+    """Move each change of side back over the frames just before it on which the new side is on
+    the ball: control >= 0.3 (Gaussian 1.5 m kernel, ball tracked) and at least the old side's.
+    At most turnover_backdate_s; never into a stoppage."""
+    if p.turnover_backdate_s <= 0:
+        return path
+    path = path.copy()
+    vis = feat["visible"]
+    ch = np.where(vis, np.exp(-(np.nan_to_num(feat["d_home"], nan=1e3) / 1.5) ** 2), 0.0)
+    ca = np.where(vis, np.exp(-(np.nan_to_num(feat["d_away"], nan=1e3) / 1.5) ** 2), 0.0)
+    ctrl = {H: ch, A: ca}
+    lim = int(round(p.turnover_backdate_s * fps))
+    runs = _runs(path)
+    for i in range(1, len(runs)):
+        a_prev, _, old = runs[i - 1]
+        t, _, new = runs[i]
+        if D in (old, new):
+            continue
+        j = t
+        while j > max(a_prev + 1, t - lim) and ctrl[new][j - 1] >= 0.3 and ctrl[new][j - 1] >= ctrl[old][j - 1]:
+            j -= 1
+        path[j:t] = new
     return path
 
 

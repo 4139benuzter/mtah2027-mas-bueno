@@ -38,3 +38,10 @@ eighth decision, with no time before the deadline.
 
 (Names: these v32-v35c are the attempts on branch `touch-detector`. The "v32" and "v33" rounds in
 `calib/v32_rule.md` and `calib/v33_rule.md` on main are a separate series with the same names.)
+
+**Public window, after the freeze (18 November about 01:25 UTC+4).** At the team's request the
+submitted file (ad4c1503) was scored once on the public 5-minute window, for information only:
+macroF1 0.7027, spellF1 0.4121, 16 possessions (truth 17); v31 had 0.9021 / 0.5375 / 15. The
+dead-ball class is weak (F1 0.49): one 20 s stoppage called alive, then live play called dead.
+The rules make the window a correctness check, not a tuning set, so the result did not change
+the submission. No defect was found: the errors sit at three stoppages, not at a block edge.

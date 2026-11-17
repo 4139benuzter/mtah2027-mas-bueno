@@ -17,7 +17,7 @@ from possession.atd import load_tracking  # noqa: E402
 from possession.keepers import fix_keepers  # noqa: E402
 from possession import features, tagging  # noqa: E402
 from possession.model import Params, emissions, switch_costs, viterbi, merge_short_dead, snap_dead_onsets, gated_team_costs, KICKOFF_FRAMES  # noqa: E402
-from possession.model import merge_same_side_dead, clean_short_spells  # noqa: E402
+from possession.model import merge_same_side_dead, clean_short_spells, place_handovers_in_gaps  # noqa: E402
 
 RESULTS_DIR = os.path.join(ROOT, "evaluation", "results")
 KICKOFF_2ND = 113742     # published in DATA.md / FAQ.md
@@ -44,6 +44,9 @@ def build(params=Params, verbose=True):
     if params.use_broadcast:
         from possession.broadcast import broadcast_ball
         ball_fill, _ = broadcast_ball()
+    if params.ball_gap_fill_s > 0:
+        gaps = features.interpolate_gaps(trk["ball"], fps, params.ball_gap_fill_s)
+        ball_fill = gaps if ball_fill is None else np.where(np.isnan(ball_fill), gaps, ball_fill)
     feat = features.compute(trk, pitch, fps, ball_fill=ball_fill, kickoffs=KICKOFF_FRAMES)
     if verbose and ball_fill is not None:
         print("broadcast ball fills {:.1%} of graded frames".format(feat["from_fill"][graded_mask(n)].mean()))
@@ -63,6 +66,7 @@ def build(params=Params, verbose=True):
     path = merge_same_side_dead(path, fps, params)
     path = snap_dead_onsets(path, feat, fps, params)
     path = clean_short_spells(path, fps, params)
+    path = place_handovers_in_gaps(path, feat, fps, params)
 
     labels = np.full(n, "X", dtype="<U1")
     letters = np.array(["H", "A", "D"])

@@ -71,6 +71,9 @@ class Params:
     min_dead_same_s = 0.0    # a stoppage shorter than this with the same side on both ends is folded
     min_blip_s = 0.0         # a possession shorter than this inside the other side's play is folded
     min_tail_s = 0.0         # ... and one between the other side's play and a stoppage
+    # v33 candidates (same convention: every default reproduces v31; calib/v33_rule.md).
+    ball_gap_fill_s = 0.0    # ball gaps up to this long are filled by a straight line (0: off)
+    gap_handover_s = 0.0     # a change of side right after a ball gap up to this long moves to its middle
 
 
 def fit_shape_logit(feat, graded):
@@ -341,6 +344,44 @@ def clean_short_spells(path, fps, p=Params):
             continue
         if (nxt == prev and b - a < blip) or (nxt == D and b - a < tail):
             path[a:b] = prev
+    return path
+
+
+def place_handovers_in_gaps(path, feat, fps, p=Params):
+    """Move a change of side that happens just after a ball gap to the middle of that gap.
+
+    When the ball reappears already with the other side, the hand-over happened somewhere inside
+    the gap, but the decoder can only switch once it sees the new side with the ball. With no
+    information about where inside the gap it happened, the middle minimises the expected error.
+    Only gaps of at most gap_handover_s seconds that end at most 0.5 s before the switch, and lie
+    entirely inside the losing side's possession, are used.
+    """
+    if p.gap_handover_s <= 0:
+        return path
+    path = path.copy()
+    lost = ~feat["visible"]
+    max_gap = int(round(p.gap_handover_s * fps))
+    after = int(round(0.5 * fps))
+    runs = _runs(path)
+    for i in range(1, len(runs)):
+        a_prev, _, k_prev = runs[i - 1]
+        t, _, k = runs[i]
+        if k == D or k_prev == D:
+            continue
+        # the last ball gap ending in (t - after, t]
+        w = lost[max(a_prev, t - after - max_gap - 1):t]
+        if not w.any():
+            continue
+        idx = np.flatnonzero(w) + max(a_prev, t - after - max_gap - 1)
+        g_end = int(idx[-1]) + 1
+        if t - g_end > after:
+            continue
+        g_start = g_end
+        while g_start > a_prev and lost[g_start - 1]:
+            g_start -= 1
+        if g_start <= a_prev or g_end - g_start > max_gap:
+            continue
+        path[(g_start + g_end) // 2:t] = k
     return path
 
 

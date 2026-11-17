@@ -305,7 +305,8 @@ swapped) replaces the trees for the side; the dead ball stays v31's. Held out on
 possessions (v31: 284), v31's dead-ball checks and 80.2\% side agreement. It runs in numpy from
 \code{calib/gru\_model.npz} (equal to PyTorch within $2\times10^{-7}$). The GRU alone scored 0.656 held out
 but was not used: its own dead-ball calls carry the risk that v35c showed on this match. It was built and
-tested in the last hour before the deadline.
+tested in the last hour before the deadline. After it was frozen and pushed, the submitted file was scored once on
+the window at the team's request, for information only (Section~5); the score did not change it.
 \end{itemize}
 
 The public 5-minute window was used to confirm alignment and file format and
@@ -413,7 +414,7 @@ Section~3):
 ours, v27 & 0.9010 & 0.5143 & 11 \\
 ours, v30 & 0.9089 & 0.5286 & 11 \\
 ours, v31 (not submitted; scored after it was frozen) & 0.9021 & 0.5375 & 15 \\
-ours, GRU hybrid (submitted) & \multicolumn{3}{r}{never scored on the window} \\
+ours, GRU hybrid (submitted; scored once after it was frozen and pushed) & 0.9267 & 0.6069 & 12 \\
 ours, v35c (not submitted; scored once, Section~3) & 0.7027 & 0.4121 & 16 \\
 \bottomrule
 \end{tabular}

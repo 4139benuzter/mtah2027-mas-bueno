@@ -66,7 +66,7 @@ class Params:
     transition_s = 3.0       # seconds after a TRANSITION tag start that favour the gaining side
     transition_weight = 0.5  # nats per frame
     short_possessions = False  # v32 filter (touches.py): passed its rule but did not transfer (calib/touch_result.md); off
-    learned_emissions = False  # v35: learned frame model (learned.py, calib/learned_rule.md)
+    learned_emissions = True   # v35c: learned frame model with v31 decoding (calib/learned_c_rule.md, calib/learned_c_result.md)
 
 
 def fit_shape_logit(feat, graded):

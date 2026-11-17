@@ -28,7 +28,8 @@ import possession_metrics as pm  # noqa: E402
 import possession.model as M  # noqa: E402
 from possession import episodes as E, features, sample_game  # noqa: E402
 from possession.model import (Params, emissions, viterbi, merge_short_dead,  # noqa: E402
-                              snap_dead_onsets, gated_team_costs)
+                              snap_dead_onsets, gated_team_costs, merge_same_side_dead,
+                              clean_short_spells)
 from possession.validate import FPS, drop_ball  # noqa: E402
 
 # First value of every list = the v30 default. Settings only; no new logic.
@@ -98,7 +99,9 @@ def decode(cfg):
         log_e, diag = emissions(feat, np.zeros(n), [], [], [], graded, n, FPS, p)
     team_costs = gated_team_costs(diag["eps"], n, FPS, p) if p.gate_switches else None
     path = merge_short_dead(viterbi(log_e, p.switch_team, p.switch_dead, team_costs), FPS, p)
+    path = merge_same_side_dead(path, FPS, p)
     path = snap_dead_onsets(path, feat, FPS, p)
+    path = clean_short_spells(path, FPS, p)
     pred = np.full(n, pm.X, dtype=np.int8)
     pred[graded] = path[graded]
     r = pm.evaluate(_S["gt"], pred)

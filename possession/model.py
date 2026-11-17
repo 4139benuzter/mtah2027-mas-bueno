@@ -65,6 +65,12 @@ class Params:
     restart_boost_s = 0.8    # ... for this long after the kick
     transition_s = 3.0       # seconds after a TRANSITION tag start that favour the gaining side
     transition_weight = 0.5  # nats per frame
+    # v32 candidates. Every default reproduces v31 exactly; values other than these are only
+    # ever chosen on labelled OTHER matches (possession/bench.py, rule in calib/v32_rule.md).
+    run_dead_hi_lost = None  # P(D) when nobody is running and the ball is not tracked (None: run_dead_hi)
+    min_dead_same_s = 0.0    # a stoppage shorter than this with the same side on both ends is folded
+    min_blip_s = 0.0         # a possession shorter than this inside the other side's play is folded
+    min_tail_s = 0.0         # ... and one between the other side's play and a stoppage
 
 
 def fit_shape_logit(feat, graded):
@@ -100,6 +106,8 @@ def emissions(feat, tag_prior, set_pieces, goals, transitions, graded, n, fps, p
     run = np.nan_to_num(feat["frac_run"], nan=0.3)
     quiet = 1.0 / (1.0 + np.exp((run - p.run_threshold) / p.run_scale))
     pd = p.run_dead_lo + (p.run_dead_hi - p.run_dead_lo) * quiet
+    if p.run_dead_hi_lost is not None:
+        pd = np.where(lost, p.run_dead_lo + (p.run_dead_hi_lost - p.run_dead_lo) * quiet, pd)
     pd = np.maximum(pd, p.p_dead_floor)
     rest = np.nan_to_num(feat["rest_frac"], nan=0.0)
     pd = np.where(rest > 0.9, np.maximum(pd, p.rest_dead), pd)
@@ -284,6 +292,55 @@ def merge_short_dead(path, fps, p=Params):
         if path[a] == D and b - a < min_len:
             fill = path[b] if b < n else (path[a - 1] if a > 0 else D)
             path[a:b] = fill
+    return path
+
+
+def _runs(path):
+    """[(start, stop, state)] constant-state runs of a path."""
+    breaks = np.flatnonzero(path[1:] != path[:-1]) + 1
+    bounds = np.concatenate(([0], breaks, [len(path)]))
+    return [(int(bounds[i]), int(bounds[i + 1]), int(path[bounds[i]])) for i in range(len(bounds) - 1)]
+
+
+def merge_same_side_dead(path, fps, p=Params):
+    """Fold a dead-ball spell shorter than min_dead_same_s that has the same side on both ends.
+
+    A real stoppage restarted by the side that had the ball (a throw-in won by the attackers)
+    looks like this too, so whether it helps is an empirical question for other matches.
+    """
+    if p.min_dead_same_s <= 0:
+        return path
+    path = path.copy()
+    min_len = int(round(p.min_dead_same_s * fps))
+    runs = _runs(path)
+    for i in range(1, len(runs) - 1):
+        a, b, k = runs[i]
+        if k == D and b - a < min_len and runs[i - 1][2] == runs[i + 1][2]:
+            path[a:b] = runs[i - 1][2]
+    return path
+
+
+def clean_short_spells(path, fps, p=Params):
+    """Fold possessions too short to be one into the side around them.
+
+    A blip of one side inside the other side's play (H A H, shorter than min_blip_s), and a short
+    possession between the other side's play and a stoppage (H A D, shorter than min_tail_s: the
+    last touch before the ball went out is not control). A possession that starts after a
+    stoppage (D A ...) is a restart and is never touched.
+    """
+    if p.min_blip_s <= 0 and p.min_tail_s <= 0:
+        return path
+    path = path.copy()
+    blip = int(round(p.min_blip_s * fps))
+    tail = int(round(p.min_tail_s * fps))
+    runs = _runs(path)
+    for i in range(1, len(runs) - 1):
+        a, b, k = runs[i]
+        prev, nxt = runs[i - 1][2], runs[i + 1][2]
+        if k == D or prev == D:
+            continue
+        if (nxt == prev and b - a < blip) or (nxt == D and b - a < tail):
+            path[a:b] = prev
     return path
 
 

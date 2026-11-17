@@ -1,6 +1,7 @@
 # Adoption rule for v35e: v35c averaged over three training draws
 
-Written and committed on 18 November 2026 at about 00:35 (UTC+4), before any v35e number existed.
+Written and committed on 18 November 2026 at 01:14 (UTC+4), before any v35e number existed. (The
+first commit said "about 00:35"; that was a misread clock. The commit time, 01:14, is correct.)
 
 **Why.** v35c's model used only 3 of every 10 graded frames (one frame offset per degradation
 seed). Averaging models trained on the other offsets reduces the model's variance and uses more

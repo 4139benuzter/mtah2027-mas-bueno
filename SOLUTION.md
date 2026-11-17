@@ -6,8 +6,9 @@ video and no learned model beyond one logistic weight fitted to pseudo-labels fr
 itself. It is validated on ten other matches with public labels (Metrica's sample matches, the
 DFL open dataset): `possession/validate.py`. Two existing settings (carry time, minimum contact)
 were chosen on those matches by a rule fixed in advance (`calib/grid_rule.md`); nothing was
-chosen on the competition match. The full write-up is in
-[docs/technical_document.md](docs/technical_document.md).
+chosen on the competition match. The technical document is
+[docs/technical_document.pdf](docs/technical_document.pdf) (source: docs/technical_document.tex; the longer
+working record is [docs/technical_document.md](docs/technical_document.md)).
 
 ## Reproduce the submission
 

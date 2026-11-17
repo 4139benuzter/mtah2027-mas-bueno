@@ -80,7 +80,7 @@ Final version (v31) on labelled other matches\textsuperscript{*} & 0.576 & 0.454
 % ---------------------------------------------------------------- 1
 \section{Approach}
 
-\st{Why a decoder, not a classifier.} The ranking metric scores \emph{whole possessions}
+The ranking metric scores \emph{whole possessions}
 (intervals matched by overlap), so the shape of the output over time matters more than any
 single frame. No labels of this match may be used for training. Labels of other matches do exist,
 but they disagree with each other about what a possession is (Section~5), so a classifier trained on
@@ -215,7 +215,7 @@ Watched through our clip renderer to debug (how the keeper swaps were found) & i
 % ---------------------------------------------------------------- 3
 \section{Training data, validation data, and the public window}
 
-\st{No label of this match, and no hand labels anywhere.} The decoder has a single fitted number,
+No label of this match was used, and nobody labelled any data by hand. The decoder has a single fitted number,
 the team-shape slope, fitted to the tracking's own pseudo-labels. Labelled data of \emph{other}
 matches was used only to measure versions and to choose or re-examine settings:
 
@@ -243,7 +243,7 @@ also scored with the ball removed in random 0.4--5\,s gaps down to 59\% (two see
 does not exist for these matches and their player identities are fixed, so those terms and the keeper
 fix are off there (\code{possession/validate.py}).
 
-\st{How settings were chosen.} Every choice below followed the same protocol, written to the
+Every choice below followed the same protocol, written to the
 repository \emph{before} the corresponding jobs ran: score each candidate setting on each match by
 its spellF1 averaged over ball conditions; pick, among settings within 0.003 of the best mean, the
 one that changes the fewest values; estimate the gain honestly by leaving each match out in turn
@@ -283,7 +283,7 @@ submitted since 16 November, before the deadline. \textbf{This last decision cam
 we disclose it as such; nothing was tuned on the window, and no setting of v31 changed.
 \end{itemize}
 
-\st{The public 5-minute window: what happened.} It was used to confirm alignment and file format and
+The public 5-minute window was used to confirm alignment and file format and
 to debug \emph{mechanisms} (how the one-second carries and the swapped keeper slots were found). But
 during development versions v24--v27 were also scored on it, and four choices were made with it in
 view: neutral weight for touches and unresolved contacts; a 3-frame minimum pass contact; the
@@ -324,7 +324,7 @@ Goal & dead from the goal (start of the longest quiet stretch before the kick-of
 % ---------------------------------------------------------------- 5
 \section{Results}
 
-\st{On labelled other matches} (official \code{evaluation/possession\_metrics.py}, spellF1). v31's two
+On labelled other matches (official \code{evaluation/possession\_metrics.py}, spellF1). v31's two
 settings were chosen on Metrica and DFL, so those columns are in-sample; its held-out gain over v30
 is $+0.020$ (Section~3).
 
@@ -354,7 +354,7 @@ public window. By source, the DFL labels are closest to the competition's: per-f
 ball-status fields of official position data.}
 \end{figure}
 
-\st{On the competition match, without labels} (\code{possession/diagnose.py}; Smart Tagging and
+On the competition match, without labels (\code{possession/diagnose.py}; Smart Tagging and
 tracking only):
 
 \begin{center}\small
@@ -375,7 +375,7 @@ same side as a tagged phase, where we say the ball is alive & 84.2\% & 83.3\% & 
 Home share of alive time is 63\%. Phases are not possessions (a phase can outlast several changes of
 side), so the side agreement is a sanity bound, not a target; the official baseline scores 67\% on it.
 
-\st{On the public window, for information only} (17 true possessions; never used to choose v31):
+On the public window, for information only (17 true possessions; never used to choose v31):
 
 \begin{center}\small
 \begin{tabular}{@{}l r r r@{}}
@@ -398,24 +398,24 @@ With 17 possessions the segment-bootstrap intervals of our versions overlap almo
 \section{Limitations, and what we would do with more time}
 
 \begin{itemize}
-\item \st{The lost ball is the largest loss.} On DFL, removing the ball down to the competition's 59\%
+\item The lost ball is the largest loss. On DFL, removing the ball down to the competition's 59\%
 visibility lowers v31 from 0.544 to 0.409. When the ball is missing we only hold the last state; filling short gaps with a straight line and placing hand-overs inside gaps changed nothing on other matches (Section~3), because the missing information is not in the tracking.
 \emph{Next:} a ball-carrier model learned from other matches' tracking (who is pressed, where the
 team is running), and the aligned broadcast feed as a second ball observer.
-\item \st{Short possessions.} With the ball as recorded, v31 outputs 58--74\% as many possessions as
+\item With the ball as recorded, v31 outputs 58--74\% as many possessions as
 the DFL labels contain; possessions under about 2\,s are mostly missed, often because the tracking
 shows no control episode at all (one brief touch, or no ball).
-\item \st{Label granularity} (Figure~2): the best setting depends on how finely the ground truth
-counts possessions, which we could not measure without breaking the rules. \emph{Next:} labels of the
+\item The best setting depends on how finely the ground truth
+counts possessions (label granularity, Figure~2), which we could not measure without breaking the rules. \emph{Next:} labels of the
 same kind as the competition's (corrected tracking) for calibration, and a segment-level decoder
 that optimises the overlap-based metric directly.
-\item \st{Boundaries} are placed to within about a second, not to the frame; possessions that begin
+\item Boundaries are placed to within about a second, not to the frame; possessions that begin
 with an untidy recovery are often credited late.
-\item \st{Goalkeepers} are often absent from the tracking (a keeper holding the ball then looks like a
+\item Goalkeepers are often absent from the tracking (a keeper holding the ball then looks like a
 slow ball nobody is near), and the slot correction applies only inside the penalty areas.
-\item \st{Clock.} The tracked ball trails the video by about three frames (measured label-free); the
+\item The tracked ball trails the video by about three frames (measured label-free); the
 ground truth runs on the tracker's clock, so no correction is applied for scoring.
-\item \st{Validation scope.} Other matches are scored without Smart Tagging and without the keeper
+\item Other matches are scored without Smart Tagging and without the keeper
 fix, on labels that are not Metrica's corrected tracking. They show the direction and size of a
 change, not the competition score.
 \end{itemize}

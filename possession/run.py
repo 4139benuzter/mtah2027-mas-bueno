@@ -48,6 +48,16 @@ def learned_path(trk, feat, log_e, graded, n, fps, pitch, params):
     f = LM.frame_features(trk, feat, log_e0, path0, share, kind_of, diag0["eps"], pitch, halves)
     X = np.stack([f[k] for k in model["features"]], axis=1)
     prob = LM.predict_json(model, X)
+    if params.learned_bag:
+        # v35e (calib/learned_e_rule.md): mean with the other training draws, same features and decoding.
+        import glob
+        extra = sorted(glob.glob(os.path.join(os.path.dirname(LM.MODEL_FILE), "learned_model_bag*.json")))
+        assert extra, "learned_bag needs calib/learned_model_bag*.json"
+        probs = [prob]
+        for p in extra:
+            m = LM.load_model(p)
+            probs.append(LM.predict_json(m, np.stack([f[k] for k in m["features"]], axis=1)))
+        prob = np.mean(probs, axis=0)
     return LM.decode(prob, log_e - log_e0, feat, diag0["eps"], model["decode"], fps)
 
 

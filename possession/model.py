@@ -67,6 +67,7 @@ class Params:
     transition_weight = 0.5  # nats per frame
     short_possessions = False  # v32 filter (touches.py): passed its rule but did not transfer (calib/touch_result.md); off
     learned_emissions = True   # v35c: learned frame model with v31 decoding (calib/learned_c_rule.md, calib/learned_c_result.md)
+    learned_bag = False        # v35e: average with calib/learned_model_bag*.json (calib/learned_e_rule.md)
     # v32 candidates. Every default reproduces v31 exactly; values other than these are only
     # ever chosen on labelled OTHER matches (possession/bench.py, rule in calib/v32_rule.md).
     run_dead_hi_lost = None  # P(D) when nobody is running and the ball is not tracked (None: run_dead_hi)

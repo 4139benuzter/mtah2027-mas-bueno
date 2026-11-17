@@ -236,10 +236,18 @@ def live_gaps(ball, run, graded, rate, seed):
     return b
 
 
+# v35c (calib/learned_c_rule.md): one decoding setting fixed in advance, instead of the pick.
+FIXED = os.environ.get("FIXED_INDEX")
+
+
+def stress_dir():
+    return "stress" if FIXED is None else "stress_fix" + FIXED
+
+
 def stress_job(job):
     match, seed = job
     name = GD.name_of(match)
-    out = os.path.join(OUT, "stress", "{}__s{}.json".format(name, seed))
+    out = os.path.join(OUT, stress_dir(), "{}__s{}.json".format(name, seed))
     if os.path.isfile(out):
         return out
     import lightgbm as lgb
@@ -258,7 +266,8 @@ def stress_job(job):
     X = np.stack([f[k] for k in sorted(f)], axis=1)
     booster = lgb.Booster(model_file=os.path.join(OUT, "models", "excl_" + name + ".txt"))
     prob = booster.predict(X, num_threads=2)
-    cfg = json.load(open(os.path.join(OUT, "select.json")))["picks"][name]
+    cfg = (json.load(open(os.path.join(OUT, "select.json")))["picks"][name] if FIXED is None
+           else GRID[int(FIXED)])
     path = LM.decode(prob, 0.0, feat, eps, cfg)
     gt = pm.label_codes(labels)
     res = {}
@@ -281,11 +290,29 @@ def cmd_stress(args):
     gains, rates = {}, {}
     for m in GD.fine_matches():
         name = GD.name_of(m)
-        per = [json.load(open(os.path.join(OUT, "stress", "{}__s{}.json".format(name, s)))) for s in SEEDS]
+        per = [json.load(open(os.path.join(OUT, stress_dir(), "{}__s{}.json".format(name, s)))) for s in SEEDS]
         gains[name] = float(np.mean([p["v35"] - p["v31"] for p in per]))
         rates[name] = float(np.mean([p["live_missing"] for p in per]))
-    json.dump({"gains": gains, "live_missing": rates}, open(os.path.join(OUT, "stress.json"), "w"), indent=1)
+    json.dump({"gains": gains, "live_missing": rates}, open(os.path.join(OUT, stress_dir() + ".json"), "w"), indent=1)
     print("stress written")
+
+
+def cmd_fixed(args):
+    """Conditions 1-4b for one GRID setting fixed in advance (v35c), from the saved scores:
+    held-out match m predicted by the model trained on the other nine; SkillCorner by the model
+    trained on all ten. No selection happens here."""
+    i = int(FIXED)
+    names = fine_names()
+    gains = {m: scores("excl_" + m, m)[str(i)] - scores("excl_" + m, m)["v31"] for m in names}
+    sc = [GD.name_of(m) for m in GD.sc_matches()]
+    d_sc = {n: scores("all", n, seeds=(0,))[str(i)] - scores("all", n, seeds=(0,))["v31"] for n in sc}
+    met = np.mean([v for m, v in gains.items() if m.startswith("metrica")])
+    dfl = np.mean([v for m, v in gains.items() if not m.startswith("metrica")])
+    json.dump({"cfg": GRID[i], "gains": gains, "sc_gains": d_sc, "metrica": met, "dfl": dfl,
+               "sc": float(np.mean(list(d_sc.values()))),
+               "three": float(np.mean([met, dfl, np.mean(list(d_sc.values()))]))},
+              open(os.path.join(OUT, "fixed_{}.json".format(i)), "w"), indent=1)
+    print("fixed written")
 
 
 def export(booster, cfg, names):
@@ -326,4 +353,5 @@ def cmd_final(args):
 
 if __name__ == "__main__":
     cmd = sys.argv[1]
-    {"build": cmd_build, "select": cmd_select, "final": cmd_final, "stress": cmd_stress}[cmd](sys.argv[2:])
+    {"build": cmd_build, "select": cmd_select, "final": cmd_final, "stress": cmd_stress,
+     "fixed": cmd_fixed}[cmd](sys.argv[2:])

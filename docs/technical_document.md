@@ -1,3 +1,7 @@
+> The submitted technical document is `docs/technical_document.tex` (built with
+> `tectonic docs/technical_document.tex` after `python docs/figures.py`; the PDF is uploaded through the
+> submission form). This file is the longer working record it was condensed from.
+
 # Frame-level ball possession from automatic tracking
 
 **More Than A Hack 2027, Phase 1. Team: Más Bueno (Aaron Binoj Amacadu, Karthik, James).**

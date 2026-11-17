@@ -38,6 +38,21 @@ def missing_stretches(mask):
     return list(zip(np.flatnonzero(edges == 1).tolist(), np.flatnonzero(edges == -1).tolist()))
 
 
+def interpolate_gaps(ball, fps, max_s):
+    """(n, 2) ball track that is a straight line across every gap of at most max_s seconds with
+    the ball tracked on both sides, NaN elsewhere: a ball_fill for compute()."""
+    out = np.full(ball.shape, np.nan)
+    if max_s <= 0:
+        return out
+    max_len = int(round(max_s * fps))
+    for a, b in missing_stretches(np.isnan(ball[:, 0])):
+        if a == 0 or b >= len(ball) or b - a > max_len:
+            continue
+        t = (np.arange(a, b) - (a - 1)) / float(b - (a - 1))
+        out[a:b] = ball[a - 1] + t[:, None] * (ball[b] - ball[a - 1])
+    return out
+
+
 def compute(trk, pitch, fps, ball_fill=None, kickoffs=()):
     """ball_fill: optional (n, 2) second ball track used only where the primary one is NaN.
     kickoffs: published kick-off frames; a restart hold never runs past one."""

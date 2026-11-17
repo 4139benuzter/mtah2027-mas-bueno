@@ -67,6 +67,15 @@ class Params:
     transition_weight = 0.5  # nats per frame
     short_possessions = False  # v32 filter (touches.py): passed its rule but did not transfer (calib/touch_result.md); off
     learned_emissions = True   # v35c: learned frame model with v31 decoding (calib/learned_c_rule.md, calib/learned_c_result.md)
+    # v32 candidates. Every default reproduces v31 exactly; values other than these are only
+    # ever chosen on labelled OTHER matches (possession/bench.py, rule in calib/v32_rule.md).
+    run_dead_hi_lost = None  # P(D) when nobody is running and the ball is not tracked (None: run_dead_hi)
+    min_dead_same_s = 0.0    # a stoppage shorter than this with the same side on both ends is folded
+    min_blip_s = 0.0         # a possession shorter than this inside the other side's play is folded
+    min_tail_s = 0.0         # ... and one between the other side's play and a stoppage
+    # v33 candidates (same convention: every default reproduces v31; calib/v33_rule.md).
+    ball_gap_fill_s = 0.0    # ball gaps up to this long are filled by a straight line (0: off)
+    gap_handover_s = 0.0     # a change of side right after a ball gap up to this long moves to its middle
 
 
 def fit_shape_logit(feat, graded):
@@ -102,6 +111,8 @@ def emissions(feat, tag_prior, set_pieces, goals, transitions, graded, n, fps, p
     run = np.nan_to_num(feat["frac_run"], nan=0.3)
     quiet = 1.0 / (1.0 + np.exp((run - p.run_threshold) / p.run_scale))
     pd = p.run_dead_lo + (p.run_dead_hi - p.run_dead_lo) * quiet
+    if p.run_dead_hi_lost is not None:
+        pd = np.where(lost, p.run_dead_lo + (p.run_dead_hi_lost - p.run_dead_lo) * quiet, pd)
     pd = np.maximum(pd, p.p_dead_floor)
     rest = np.nan_to_num(feat["rest_frac"], nan=0.0)
     pd = np.where(rest > 0.9, np.maximum(pd, p.rest_dead), pd)
@@ -286,6 +297,93 @@ def merge_short_dead(path, fps, p=Params):
         if path[a] == D and b - a < min_len:
             fill = path[b] if b < n else (path[a - 1] if a > 0 else D)
             path[a:b] = fill
+    return path
+
+
+def _runs(path):
+    """[(start, stop, state)] constant-state runs of a path."""
+    breaks = np.flatnonzero(path[1:] != path[:-1]) + 1
+    bounds = np.concatenate(([0], breaks, [len(path)]))
+    return [(int(bounds[i]), int(bounds[i + 1]), int(path[bounds[i]])) for i in range(len(bounds) - 1)]
+
+
+def merge_same_side_dead(path, fps, p=Params):
+    """Fold a dead-ball spell shorter than min_dead_same_s that has the same side on both ends.
+
+    A real stoppage restarted by the side that had the ball (a throw-in won by the attackers)
+    looks like this too, so whether it helps is an empirical question for other matches.
+    """
+    if p.min_dead_same_s <= 0:
+        return path
+    path = path.copy()
+    min_len = int(round(p.min_dead_same_s * fps))
+    runs = _runs(path)
+    for i in range(1, len(runs) - 1):
+        a, b, k = runs[i]
+        if k == D and b - a < min_len and runs[i - 1][2] == runs[i + 1][2]:
+            path[a:b] = runs[i - 1][2]
+    return path
+
+
+def clean_short_spells(path, fps, p=Params):
+    """Fold possessions too short to be one into the side around them.
+
+    A blip of one side inside the other side's play (H A H, shorter than min_blip_s), and a short
+    possession between the other side's play and a stoppage (H A D, shorter than min_tail_s: the
+    last touch before the ball went out is not control). A possession that starts after a
+    stoppage (D A ...) is a restart and is never touched.
+    """
+    if p.min_blip_s <= 0 and p.min_tail_s <= 0:
+        return path
+    path = path.copy()
+    blip = int(round(p.min_blip_s * fps))
+    tail = int(round(p.min_tail_s * fps))
+    runs = _runs(path)
+    for i in range(1, len(runs) - 1):
+        a, b, k = runs[i]
+        prev, nxt = runs[i - 1][2], runs[i + 1][2]
+        if k == D or prev == D:
+            continue
+        if (nxt == prev and b - a < blip) or (nxt == D and b - a < tail):
+            path[a:b] = prev
+    return path
+
+
+def place_handovers_in_gaps(path, feat, fps, p=Params):
+    """Move a change of side that happens just after a ball gap to the middle of that gap.
+
+    When the ball reappears already with the other side, the hand-over happened somewhere inside
+    the gap, but the decoder can only switch once it sees the new side with the ball. With no
+    information about where inside the gap it happened, the middle minimises the expected error.
+    Only gaps of at most gap_handover_s seconds that end at most 0.5 s before the switch, and lie
+    entirely inside the losing side's possession, are used.
+    """
+    if p.gap_handover_s <= 0:
+        return path
+    path = path.copy()
+    lost = ~feat["visible"]
+    max_gap = int(round(p.gap_handover_s * fps))
+    after = int(round(0.5 * fps))
+    runs = _runs(path)
+    for i in range(1, len(runs)):
+        a_prev, _, k_prev = runs[i - 1]
+        t, _, k = runs[i]
+        if k == D or k_prev == D:
+            continue
+        # the last ball gap ending in (t - after, t]
+        w = lost[max(a_prev, t - after - max_gap - 1):t]
+        if not w.any():
+            continue
+        idx = np.flatnonzero(w) + max(a_prev, t - after - max_gap - 1)
+        g_end = int(idx[-1]) + 1
+        if t - g_end > after:
+            continue
+        g_start = g_end
+        while g_start > a_prev and lost[g_start - 1]:
+            g_start -= 1
+        if g_start <= a_prev or g_end - g_start > max_gap:
+            continue
+        path[(g_start + g_end) // 2:t] = k
     return path
 
 

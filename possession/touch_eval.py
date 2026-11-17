@@ -43,14 +43,22 @@ VARIANTS = {
                "smooth": 10, "dv_min": 4.0},
     "smooth_k2": {"conds": (("s10rec", None, 0), ("s10v59s0", 0.59, 0), ("s10v59s1", 0.59, 1)),
                   "smooth": 10, "dv_min": 2.0},
+    # v32b (calib/touch_rule_nodv.md): the raw cache, without the velocity-change feature (column 6)
+    "nodv": {"conds": (("rec", None, 0), ("v59s0", 0.59, 0), ("v59s1", 0.59, 1)), "smooth": 0, "dv_min": 4.0,
+             "cache": "touch", "drop": (6,)},
 }
 VARIANT = os.environ.get("TOUCH_VARIANT", "raw")
-CACHE = os.path.join(ROOT, "cache", "touch" if VARIANT == "raw" else "touch_" + VARIANT)
-CONDS = VARIANTS[VARIANT]["conds"]
-T.TouchParams.dv_min = VARIANTS[VARIANT]["dv_min"]
+_V = VARIANTS[VARIANT]
+CACHE = os.path.join(ROOT, "cache", _V.get("cache", "touch" if VARIANT == "raw" else "touch_" + VARIANT))
+CONDS = _V["conds"]
+T.TouchParams.dv_min = _V["dv_min"]
+N_FEATURES = 25
+COLS = [j for j in range(N_FEATURES) if j not in _V["drop"]] if "drop" in _V else None
+SELECT = os.path.join(CACHE, "select.json" if COLS is None else "select_{}.json".format(VARIANT))
 EXCLUDED_SC = {"SC2017461"}
 TAUS = (0.5, 0.6, 0.7, 0.8, 0.9, 2.0)    # 2.0 = filter off (v31 unchanged)
-WEIGHTS = os.path.join(ROOT, "calib", "touch_weights.json")
+WEIGHTS = os.path.join(ROOT, "calib", "touch_weights.json" if COLS is None else
+                       "touch_weights_{}.json".format(VARIANT))
 
 
 def fine_matches():
@@ -140,7 +148,11 @@ def score(gt, path):
 def train(data, keys):
     X = np.vstack([data[k]["X"][data[k]["act"]] for k in keys])
     y = np.concatenate([data[k]["y"][data[k]["act"]] for k in keys])
-    return T.fit_logistic(X, y)
+    if COLS is None:
+        return T.fit_logistic(X, y)
+    model = T.fit_logistic(X[:, COLS], y)
+    model["cols"] = COLS
+    return model
 
 
 def s_of(data, match, model, tau):
@@ -218,7 +230,7 @@ def cmd_select(_):
     ok1, ok2, ok3 = g.mean() >= 0.010, (g > 0).sum() >= 8, met.mean() > 0 and dfl.mean() > 0
     print("fine labels, leave one match out: mean gain {:+.4f} ({}), wins {}/10 ({}), Metrica {:+.4f} "
           "DFL {:+.4f} ({})".format(g.mean(), ok1, (g > 0).sum(), ok2, met.mean(), dfl.mean(), ok3))
-    json.dump({"gains": gains, "taus": picks}, open(os.path.join(CACHE, "select.json"), "w"), indent=1)
+    json.dump({"gains": gains, "taus": picks}, open(SELECT, "w"), indent=1)
     print("FINE_RULE", "PASS" if ok1 and ok2 and ok3 else "FAIL")
 
 
@@ -233,7 +245,7 @@ def cmd_final(_):
     sc = load_all(sc_matches(), [CONDS[0][0]])
     sc_names = [name_of(m) for m in sc_matches()]
     d_sc = np.array([s_of(sc, m, model, tau) - s_of(sc, m, model, 2.0) for m in sc_names])
-    sel = json.load(open(os.path.join(CACHE, "select.json")))
+    sel = json.load(open(SELECT))
     g = sel["gains"]
     met = np.mean([g[m] for m in names if m.startswith("metrica")])
     dfl = np.mean([g[m] for m in names if not m.startswith("metrica")])

@@ -186,6 +186,8 @@ def fit_logistic(X, y, l2=TouchParams.l2, iters=50):
 
 
 def predict(model, X):
+    if model.get("cols") is not None:
+        X = X[:, model["cols"]]       # a variant trained on a subset of the features
     mu, sd, w = np.array(model["mu"]), np.array(model["sd"]), np.array(model["w"])
     Z = np.hstack([(X - mu) / sd, np.ones((len(X), 1))])
     return 1.0 / (1.0 + np.exp(-(Z @ w)))

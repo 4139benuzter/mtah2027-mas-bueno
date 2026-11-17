@@ -88,6 +88,10 @@ def build(params=Params, verbose=True):
     path = snap_dead_onsets(path, feat, fps, params)
     if params.learned_emissions:
         path = learned_path(trk, feat, log_e, graded, n, fps, pitch, params)
+    if params.hybrid:
+        # calib/hybrid_rule.md: dead ball from v31, the side from v35c where v35c says H or A
+        p35 = learned_path(trk, feat, log_e, graded, n, fps, pitch, params)
+        path = np.where(path == 2, 2, np.where(p35 != 2, p35, path))
     if params.short_possessions:
         # Possessions shorter than the decoder can see, from a filter trained on other matches
         # only (possession/touches.py, calib/touch_rule.md, calib/touch_weights.json).

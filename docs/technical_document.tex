@@ -50,7 +50,7 @@
 Aaron Binoj Amacadu \qquad James Joshua Koshy \qquad Karthik Nambiar Puthiyedathu Velluva\par
 \vspace{0.6em}
 {\small More Than A Hack 2027, Phase 1 -- technical document -- 17 November 2026\par
-Code: \url{https://github.com/4139benuzter/mtah2027-mas-bueno} \par Submission file (v31), SHA-256 \texttt{f34036f02e246b42\ldots{}cc15aca906d65a686d6963a32604de2a}\par}
+Code: \url{https://github.com/4139benuzter/mtah2027-mas-bueno} \par Submission file (hybrid), SHA-256 \texttt{0743351ebdf0c96c\ldots{}91c691f034bc401fdbd5}\par}
 \end{center}
 \vspace{0.5em}
 
@@ -64,7 +64,9 @@ nobody on the pitch is running. There is no machine-learning model trained on th
 label of this match was used, and the pipeline (numpy and pandas, about 15\,s on a laptop) contains
 no language model. Every setting that is not a physical or football quantity was chosen on
 \emph{other} labelled matches, by selection rules committed to the repository before their results
-existed.
+existed. The submitted file keeps this decoder's dead-ball decisions and, where the ball is
+alive, takes the side from a gradient-boosted classifier trained only on other matches (the hybrid
+of Section~3).
 
 \end{abstract}
 
@@ -281,6 +283,13 @@ on the public window, for information: macroF1 0.7027, spellF1 0.4121 (Section~5
 stoppage alive. The team then returned to v31, the version the pre-committed rule had kept and the file
 submitted since 16 November, before the deadline. \textbf{This last decision came after that window score,} and
 we disclose it as such; nothing was tuned on the window, and no setting of v31 changed.
+\item \st{The submitted hybrid} (\code{calib/hybrid\_rule.md}, committed at 02:14 UTC+4 before any
+hybrid number). Dead ball from v31; where v31 says the ball is alive, the side from v35c where v35c says
+home or away, otherwise v31's side. Held out on the ten public matches it gained $+0.034$ spellF1 over v31
+(10 of 10 matches; Metrica $+0.040$, DFL $+0.031$) and about $+0.01$ macroF1; on this match it gives 285
+possessions (v31: 284) and v31's dead-ball checks (Section~5). It passed every condition of its rule and
+is the submitted file. The idea came after v35c's window score showed weak dead-ball timing; we disclose
+that. The hybrid itself was never scored on the window.
 \end{itemize}
 
 The public 5-minute window was used to confirm alignment and file format and
@@ -290,7 +299,7 @@ view: neutral weight for touches and unresolved contacts; a 3-frame minimum pass
 stoppage-onset pass and its constants; and very probably the 0.88 strength of controlled and pass
 evidence. An earlier draft said the window set no number; that was not accurate. From v28 on no
 version was chosen with it (with one exception on the last night, the return
-from v35c to v31, disclosed above), the tools no longer read it by default, the minimum contact was replaced
+from v35c to v31 and the hybrid that followed, disclosed above), the tools no longer read it by default, the minimum contact was replaced
 by a value chosen on other matches, and the other constants were re-examined on other matches (the
 re-examination above): none of the alternatives passed, and each moved the mean by at most 0.002.
 The final version was frozen before it was scored on the window; it was scored once afterwards, for
@@ -372,7 +381,8 @@ same side as a tagged phase, where we say the ball is alive & 84.2\% & 83.3\% & 
 \end{tabular}
 \end{center}
 
-Home share of alive time is 63\%. Phases are not possessions (a phase can outlast several changes of
+The submitted hybrid gives 285 possessions (11.7\,s), 12\% shorter than 2\,s, 47.5\% dead, 8.7\% and
+94.6\% on the two dead-ball checks, and 80.4\% side agreement. Home share of alive time is 63\% for v31. Phases are not possessions (a phase can outlast several changes of
 side), so the side agreement is a sanity bound, not a target; the official baseline scores 67\% on it.
 
 On the public window, for information only (17 true possessions; never used to choose v31):
@@ -430,8 +440,8 @@ python evaluation/validate\_submission.py "evaluation/results/Más Bueno.csv"
 \end{quote}
 
 Data go in \code{./data} as described in \code{DATA.md} (or \code{MTAH\_DATA\_DIR}). The run is
-deterministic: the same data give a byte-identical file, with SHA-256
-\\
+deterministic: the same data give a byte-identical file (the hybrid, \code{hybrid = True} in \code{possession/model.py}), with SHA-256\\
+{\small\texttt{0743351ebdf0c96cb67d87029f8b148cfff06a33072921c691f034bc401fdbd5}}; with \code{hybrid = False} the same command gives v31's file\\
 {\small\texttt{f34036f02e246b42f314e1de70d7d6b1cc15aca906d65a686d6963a32604de2a}}, reproduced on two machines
 and with two numpy/pandas versions (pinned numpy 2.5.0 / pandas 3.0.3, and 2.3.5 / 3.0.0).
 

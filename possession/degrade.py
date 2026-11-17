@@ -99,8 +99,100 @@ def _subsample(x, k):
     return out
 
 
+# --- cnoise / nohold (found by the fit workflow on 2026-11-17; ported unchanged) -----------
+# The DFL ball holds its last position exactly during stoppages (runs of 30-45 s); the
+# competition ball has no such holds (an automatic tracker reports no ball, or a moving one).
+# nohold makes holds of >= m frames missing, then applies cnoise: smoothing (Gaussian s, with a
+# lighter Gaussian sf blended in above v0 m/s over vw m/s), temporally correlated noise added
+# after the smoothing (white noise filtered by a unit-energy Gaussian of tn frames, std post m),
+# output rounded to dq m, then lag.
+def _hold_mask(ball, m):
+    """(n,) bool: frames that repeat the previous position exactly, in runs of >= m such frames."""
+    same = np.zeros(len(ball), dtype=bool)
+    same[1:] = np.all(ball[1:] == ball[:-1], axis=1) & ~np.isnan(ball[1:, 0])
+    edges = np.diff(np.concatenate(([0], same.astype(np.int8), [0])))
+    out = np.zeros(len(ball), dtype=bool)
+    for s0, s1 in zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)):
+        if s1 - s0 >= m:
+            out[s0:s1] = True
+    return out
+
+
+def _smooth_axis(x, params):
+    if "h" in params:
+        return features.moving_mean(x, int(params["h"]))
+    return _gauss(x, float(params.get("s", 0.0)))
+
+
+def _adaptive(b, params):
+    heavy = np.stack([_smooth_axis(b[:, j], params) for j in range(2)], axis=1)
+    if "sf" not in params:
+        return heavy
+    light = np.stack([_gauss(b[:, j], float(params["sf"])) for j in range(2)], axis=1)
+    sp = features.moving_mean(features.ball_speed(heavy, FPS), 2)
+    w = np.clip((np.nan_to_num(sp, nan=0.0) - float(params["v0"])) / float(params.get("vw", 4.0)), 0.0, 1.0)
+    return heavy + w[:, None] * (light - heavy)
+
+
+def _gauss_noise(white, tn):
+    if tn <= 0:
+        return white
+    half = int(np.ceil(4 * tn))
+    k = np.exp(-0.5 * (np.arange(-half, half + 1) / tn) ** 2)
+    k /= np.sqrt((k ** 2).sum())
+    return np.convolve(white, k, mode="same")
+
+
+def _shift(out, lag):
+    lag = int(lag)
+    if lag > 0:
+        return np.vstack([np.full((lag, 2), np.nan), out[:-lag]])
+    if lag < 0:
+        return np.vstack([out[-lag:], np.full((-lag, 2), np.nan)])
+    return out
+
+
+def _cnoise(ball, params, seed):
+    rng = np.random.default_rng(seed)
+    b = ball.astype(np.float64).copy()
+    missing = np.isnan(b[:, 0])
+    w_pre, w_post = rng.normal(0.0, 1.0, b.shape), rng.normal(0.0, 1.0, b.shape)
+    b = b + float(params.get("pre", 0.0)) * w_pre
+    post, tn = float(params.get("post", 0.0)), float(params.get("tn", 0.0))
+    sm = _adaptive(b, params)
+    cols = []
+    for j in range(2):
+        y = sm[:, j]
+        if post > 0:
+            y = y + post * _gauss_noise(w_post[:, j], tn)
+        cols.append(y)
+    out = np.stack(cols, axis=1)
+    dq = float(params.get("dq", 0.0))
+    if dq > 0:
+        out = np.round(out / dq) * dq
+    out[missing] = np.nan
+    out = _shift(out, params.get("lag", 0))
+    out[missing] = np.nan
+    return out
+
+
+def _nohold(ball, params, seed):
+    b = ball.astype(np.float64).copy()
+    hold = _hold_mask(b, int(params.get("m", 10)))
+    pad = int(params.get("pad", 0))
+    if pad > 0:
+        for e in np.flatnonzero(hold[:-1] & ~hold[1:]) + 1:
+            hold[e:e + pad] = True
+    b[hold] = np.nan
+    return _cnoise(b, params, seed)
+
+
 def apply(ball, family, params, seed=SEED):
     """Degraded copy of ball (n, 2). Order: position noise, family filter, lag (ball later)."""
+    if family == "nohold":
+        return _nohold(ball, params, seed)
+    if family == "cnoise":
+        return _cnoise(ball, params, seed)
     rng = np.random.default_rng(seed)
     b = ball.astype(np.float64).copy()
     missing = np.isnan(b[:, 0])

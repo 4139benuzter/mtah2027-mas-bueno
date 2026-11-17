@@ -1,0 +1,1 @@
+{"family": "nohold", "params": {"m": 500, "s": 7, "tn": 7, "post": 0.24, "sf": 4, "v0": 16, "vw": 4, "dq": 0.006, "lag": 0}, "D_dfl": 0.0027, "D_raw_dfl": 1.114, "D_metrica_not_fitted": 0.04224, "seed": 0, "chosen_by": "lowest D among 633 configurations of 8 families (fit workflow wf_f5302c2e-0f2, public DFL only); re-run in the main session reproduces D = 0.0027"}

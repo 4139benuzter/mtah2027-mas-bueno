@@ -46,6 +46,10 @@ VARIANTS = {
     # v32b (calib/touch_rule_nodv.md): the raw cache, without the velocity-change feature (column 6)
     "nodv": {"conds": (("rec", None, 0), ("v59s0", 0.59, 0), ("v59s1", 0.59, 1)), "smooth": 0, "dv_min": 4.0,
              "cache": "touch", "drop": (6,)},
+    # v33 (calib/domain_rule.md): every public ball degraded by calib/domain_choice.json after any
+    # removal of the ball; SkillCorner is not degraded (already automatic tracking).
+    "dom": {"conds": (("drec", None, 0), ("dv59s0", 0.59, 0), ("dv59s1", 0.59, 1)), "smooth": 0, "dv_min": 4.0,
+            "degrade": os.path.join(ROOT, "calib", "domain_choice.json")},
 }
 VARIANT = os.environ.get("TOUCH_VARIANT", "raw")
 _V = VARIANTS[VARIANT]
@@ -57,7 +61,7 @@ COLS = [j for j in range(N_FEATURES) if j not in _V["drop"]] if "drop" in _V els
 SELECT = os.path.join(CACHE, "select.json" if COLS is None else "select_{}.json".format(VARIANT))
 EXCLUDED_SC = {"SC2017461"}
 TAUS = (0.5, 0.6, 0.7, 0.8, 0.9, 2.0)    # 2.0 = filter off (v31 unchanged)
-WEIGHTS = os.path.join(ROOT, "calib", "touch_weights.json" if COLS is None else
+WEIGHTS = os.path.join(ROOT, "calib", "touch_weights.json" if VARIANT == "raw" else
                        "touch_weights_{}.json".format(VARIANT))
 
 
@@ -112,9 +116,14 @@ def build_one(job):
     trk, labels, info = load(match)
     if vis:
         trk["ball"] = drop_ball(trk["ball"], labels != "X", vis, seed)
-    half = VARIANTS[VARIANT]["smooth"] if not match.endswith("npz") or "SC" not in os.path.basename(match) else 0
+    is_sc = match.endswith("npz") and "SC" in os.path.basename(match)
+    half = 0 if is_sc else VARIANTS[VARIANT]["smooth"]
     if half:
         trk["ball"] = smooth_ball(trk["ball"], half)
+    if _V.get("degrade") and not is_sc:
+        from possession import degrade
+        choice = json.load(open(_V["degrade"]))
+        trk["ball"] = degrade.apply(trk["ball"], choice["family"], choice["params"])
     gt = pm.label_codes(labels)
     path, feat, eps = decode_v31(trk, labels, info)
     with warnings.catch_warnings():

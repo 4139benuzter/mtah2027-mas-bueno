@@ -1,12 +1,15 @@
 # Our solution: possession from control episodes
 
 This fork adds `possession/`, a tracking-only pipeline that labels every frame of the tactical
-video as `H` / `A` / `D`. It reads the provided ATD and Smart Tagging through `games.py`, uses no
-video and no learned model beyond one logistic weight fitted to pseudo-labels from the tracking
-itself. It is validated on ten other matches with public labels (Metrica's sample matches, the
-DFL open dataset): `possession/validate.py`. Two existing settings (carry time, minimum contact)
-were chosen on those matches by a rule fixed in advance (`calib/grid_rule.md`); nothing was
-chosen on the competition match. The technical document is
+video as `H` / `A` / `D`. It reads the provided ATD and Smart Tagging through `games.py` and uses no
+video. The submitted version (v35c) feeds a gated Viterbi decoder with per-frame probabilities
+from a LightGBM classifier trained only on ten other matches with public labels (Metrica's sample
+matches, the DFL open dataset), whose balls were degraded to look like the competition ball; the
+trees are in `calib/learned_model.json` and run with numpy (`possession/learned.py`). v35c failed
+one condition of its own pre-committed rule and was submitted by an explicit override
+(`calib/learned_c_override.md`). With `learned_emissions = False` in `possession/model.py` the same
+command gives the hand-built v31 (`calib/grid_rule.md`). No label of the competition match was
+used for anything. The technical document is
 [docs/technical_document.pdf](docs/technical_document.pdf) (source: docs/technical_document.tex; the longer
 working record is [docs/technical_document.md](docs/technical_document.md)).
 

@@ -1,0 +1,8 @@
+# Only for re-training the v35c frame model (possession/learned_eval.py). Not needed to regenerate
+# the submission: make_submission.py reads the exported trees in calib/learned_model.json with numpy.
+# The versions are those of the run that produced calib/learned_model.json (Python 3.14.0, Linux).
+# The DFL conversion (possession/dfl.py) also needs kloppy==3.19.1.
+lightgbm==4.7.0
+numpy==2.5.0
+pandas==3.0.3
+scipy==1.18.1

@@ -49,11 +49,11 @@
 % ---------------------------------------------------------------- title
 {\sffamily
 {\color{muted}\small More Than A Hack 2027 \textbullet{} Phase 1 \textbullet{} Technical document}\\[0.35em]
-{\color{navy}\LARGE\bfseries Possession from automatic tracking:\\[0.1em] a gated three-state decoder}\\[0.55em]
+{\color{navy}\LARGE\bfseries Possession from automatic tracking:\\[0.1em] a gated three-state decoder with learned emissions}\\[0.55em]
 {\normalsize\bfseries Team Más Bueno}\quad{\small\color{muted}Aaron Binoj Amacadu \textperiodcentered{}
 James Joshua Koshy \textperiodcentered{} Karthik Nambiar Puthiyedathu Velluva}\\[0.2em]
 {\small\color{muted}Code: \href{https://github.com/4139benuzter/mtah2027-mas-bueno}{github.com/4139benuzter/mtah2027-mas-bueno}
-\quad Submission file SHA-256 \code{f34036f0\ldots{}2de2a} (v31)}
+\quad Submission file SHA-256 \code{ad4c1503\ldots{}a5b01} (v35c)}
 }
 
 \vspace{0.6em}
@@ -64,18 +64,22 @@ James Joshua Koshy \textperiodcentered{} Karthik Nambiar Puthiyedathu Velluva}\\
 definition of possession is written into the decoder: a change of side is cheap \emph{only} where
 the gaining side starts a controlled contact or a completed pass; touches, deflections and duels
 are neutral; the ball is dead when it is out, between going out and the restart kick, or when
-nobody on the pitch is running. There is no machine-learning model trained on this match, no
-label of this match was used, and the pipeline (numpy and pandas, about 15\,s on a laptop) contains
-no language model. Every setting that is not a physical or football quantity was chosen on
-\emph{other} labelled matches, by selection rules committed to the repository before their results
-existed.
+nobody on the pitch is running. The submitted version (v35c) feeds this decoder with per-frame
+probabilities from a gradient-boosted classifier (LightGBM) trained only on ten \emph{other}
+labelled matches, whose balls we degraded to look like this match's ball (Section~1.6). No label of
+this match was used, and the pipeline (numpy and pandas, about 20\,s on a laptop) contains no
+language model. Settings were chosen on other labelled matches by rules committed to the repository
+before their results existed. v35c failed one condition of its own rule, a transfer check, and we
+submit it anyway; Section~5 gives the evidence on both sides.
 
 \smallskip
 \begin{tabularx}{\linewidth}{@{}Lrrrr@{}}
 \st{spellF1, official scorer} & \st{Metrica (3)} & \st{DFL (7)} & \st{SkillCorner (19)} & \st{Floor} \\
 \midrule
-Final version (v31) on labelled other matches\textsuperscript{*} & 0.576 & 0.454 & 0.550 & 0.2433 \\[-0.2em]
-\multicolumn{5}{@{}l}{\footnotesize\color{muted}\textsuperscript{*}Metrica and DFL: mean over the ball as recorded and cut to the competition's 59\% visibility (Section 5).} \\
+v31 (hand-built evidence) on labelled other matches\textsuperscript{*} & 0.576 & 0.454 & 0.550 & 0.2433 \\
+Submitted v35c: held-out gain over v31, degraded balls\textsuperscript{\dag} & $+0.142$ & $+0.109$ & $+0.008$ & \\[-0.2em]
+\multicolumn{5}{@{}l}{\footnotesize\color{muted}\textsuperscript{*}Metrica and DFL: mean over the ball as recorded and cut to the competition's 59\% visibility (Section 5).} \\[-0.3em]
+\multicolumn{5}{@{}l}{\footnotesize\color{muted}\textsuperscript{\dag}Each Metrica/DFL match predicted by a model trained on the other nine (three degradation seeds); SkillCorner never trained on.} \\
 \end{tabularx}
 \end{tcolorbox}
 
@@ -93,6 +97,9 @@ stays with the last side. We therefore express every cue as a per-frame log-prob
 three states and let a Viterbi pass find the most probable sequence, with a cost charged for every
 change of state. The chain changes its answer only when evidence for the new state, accumulated
 over consecutive frames, outweighs that cost: this is what turns noisy frames into possessions.
+The submitted version does use a classifier trained on other matches' labels (Section~1.6), but
+only to weigh the evidence of stage 3; the decoder still decides where a possession can change.
+Section~5 gives the cost of that choice as well as its gain.
 
 \begin{figure}[h]
 \centering
@@ -118,7 +125,8 @@ over consecutive frames, outweighs that cost: this is what turns noisy frames in
 \draw[arr] ($(ev.north east)+(0.02,-1.17)$) -- ($(dec.north west)+(-0.02,-1.17)$);
 \draw[arr] ($(dec.north east)+(0.02,-1.17)$) -- ($(out.north west)+(-0.02,-1.17)$);
 \end{tikzpicture}
-\caption{The pipeline. One command (\code{python make\_submission.py}) runs all five stages.}
+\caption{The pipeline. One command (\code{python make\_submission.py}) runs all five stages. In the
+submitted version (v35c) a classifier turns the evidence of stage 3 into the log-probabilities of stage 4 (Section~1.6).}
 \end{figure}
 
 \subsection{Who has the ball: control episodes and their outcomes}
@@ -193,6 +201,41 @@ overruled however clean the control was. Two post-passes follow: dead-ball spell
 moved back to the moment the running share began to fall, because the decoder places the boundary
 where evidence tips, a second or two after the whistle.
 
+\subsection{Learned emissions: the submitted version (v35c)}
+
+The cues above are hand-weighted. In the submitted version a gradient-boosted classifier
+(LightGBM, multiclass \code{H}/\code{A}/\code{D}, 120 rounds, so 360 trees) turns them into
+per-frame probabilities, and the decoder above uses $\log P$ as its evidence, with the same costs
+(15 and 25 nats), the same gate and the same post-passes (\code{possession/learned.py},
+\code{run.py: learned\_path}). The Smart Tagging terms (set-piece and goal windows, restart and
+transition credit, phase prior) are added to these log-probabilities unchanged. The classifier
+does not replace the decoder: it only weighs the evidence, and the decoder still decides where a
+possession can change.
+
+\st{Features} (67 per frame): the tracking (ball speed, position, visibility and out-of-play state;
+distance and speed of the nearest player of each side; running share; team shape; the dead-ball
+cues of Section~1.3), v31's own tag-free evidence and decoded path, the contact episodes (class,
+home share, time since and until the last and next contact of each side), and averages of some of
+these over $\pm0.5$, 2 and 5\,s. Every home/away pair is defined so that swapping the teams swaps
+the pair.
+
+\st{Training} (\code{possession/learned\_eval.py}): the ten labelled other matches of Section~3
+(Metrica 1--3, DFL $\times$7), every 10th graded frame, each row also added with the teams swapped,
+learning rate 0.1, 31 leaves, at least 100 rows per leaf, feature and row fraction 0.8, L2 1,
+63 bins, seed 0, deterministic mode. The trees are exported to \code{calib/learned\_model.json}
+(4.4\,MB) and evaluated with numpy; on 20,000 rows the numpy output equals LightGBM's exactly.
+Regenerating the submission therefore needs no LightGBM.
+
+\st{Degraded balls.} The public balls are cleaner than this match's: smoother at contacts and
+rarely missing. Before training and testing, each public ball is degraded so that 17 summary
+statistics of its tracking (medians, percentiles, shares and rates of ball speed, changes of
+velocity, distances to players and missing frames) match the same 17 statistics of this match's
+tracking (\code{calib/domain\_target.json}; computed over the whole match without labels and tied
+to no frame). The fitted degradation (\code{calib/domain\_choice.json},
+\code{possession/degrade.py}): ball holds of 20\,s or more become missing, Gaussian smoothing of 7
+frames (4 above 16\,m/s), correlated noise of 0.24\,m over 7 frames, rounding to 6\,mm; three
+random seeds per match.
+
 % ---------------------------------------------------------------- 2
 \section{Assets used, and dropped}
 
@@ -217,9 +260,11 @@ Watched through our clip renderer to debug (how the keeper swaps were found) & i
 % ---------------------------------------------------------------- 3
 \section{Training data, validation data, and the public window}
 
-\st{No label of this match, and no hand labels anywhere.} The decoder has a single fitted number,
-the team-shape slope, fitted to the tracking's own pseudo-labels. Labelled data of \emph{other}
-matches was used only to measure versions and to choose or re-examine settings:
+\st{No label of this match, and no hand labels anywhere.} The hand-built decoder (v31) has a single
+fitted number, the team-shape slope, fitted to the tracking's own pseudo-labels. The submitted
+classifier (v35c, Section~1.6) is trained on the Metrica and DFL matches below. Labelled data of
+\emph{other} matches was used to train that classifier, to measure versions and to choose or
+re-examine settings:
 
 \begin{center}\small
 \begin{tabularx}{\linewidth}{@{}P{2.75cm} P{1.75cm} L P{3.3cm}@{}}
@@ -229,13 +274,13 @@ matches was used only to measure versions and to choose or re-examine settings:
 Metrica sample matches 1--3\newline{\footnotesize\color{muted}\url{github.com/metrica-sports/sample-data}} & 3 (1,150) &
 Metrica's human event data, turned into frames with the competition definition by
 \code{possession/sample\_game.py} (owner changes only at an event in which a player plays the ball) &
-measuring versions; choosing v31's settings; re-examining constants \\
+training the v35c classifier; measuring versions; choosing v31's settings; re-examining constants \\
 DFL / Sportec open data\newline{\footnotesize\color{muted}Bassek et al.\ 2025, \emph{Sci.\ Data}, CC BY 4.0} & 7 (3,061) &
 the per-frame \code{BallPossession} and \code{BallStatus} of official DFL position data
 (\code{possession/dfl.py}): the same kind of source as the competition ground truth & the same \\
 SkillCorner open data\newline{\footnotesize\color{muted}\url{github.com/SkillCorner/opendata}, MIT} & 19 tested + 1 (5,146) &
 SkillCorner's automatic possession and interruption events, turned into frames by
-\code{possession/skillcorner.py} & independent check; last selection round \\
+\code{possession/skillcorner.py} & independent check (also of v35c; never trained on); last selection round \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -269,6 +314,16 @@ The pick (fold possessions under 1\,s inside the other side's play) was the same
 helped 21 of 22 matches, but its held-out gain was $+0.0092$ against a bar of $+0.010$. \textbf{v31
 was kept.} Lowering the dead-ball probability when the ball is lost hurt in both groups.
 \item \st{New logic, round 2: the lost ball} (\code{calib/v33\_rule.md}): straight-line filling of ball gaps up to 0.5--2\,s, and moving a change of side that follows a ball gap to the middle of the gap (12 combinations, ball as recorded only, since the artificial gaps are far shorter than the competition's real ones). Every held-out pick was v31 itself and no combination moved the mean by more than 0.0012: \textbf{v31 was kept.}
+\item \st{Learned evidence, a parallel series} (branch \code{touch-detector}; files \code{calib/touch\_*},
+\code{domain\_*}, \code{learned\_*}, where the attempts are also called v32--v35c, a separate series
+from the two rounds above). Six attempts, each with a rule committed before its result, all on
+the Metrica and DFL matches with degraded balls (Section~1.6) and SkillCorner as a check: a learned
+filter for short possessions (passed its rule, did not transfer to a ball like this match's; kept
+off), two variants of it (failed), v31's settings re-chosen on degraded balls (held-out $+0.0096$
+against a bar of $+0.010$), and the classifier of Section~1.6 with a re-chosen decoding setting
+(v35, $+0.125$) and with v31's own setting fixed in advance (v35c, $+0.119$). Both classifier
+versions failed one transfer condition (Section~5). \textbf{v35c was then submitted by an
+explicit override} (\code{calib/learned\_c\_override.md}).
 \end{itemize}
 
 \st{The public 5-minute window: what happened.} It was used to confirm alignment and file format and
@@ -280,7 +335,7 @@ evidence. An earlier draft said the window set no number; that was not accurate.
 version was chosen with it, the tools no longer read it by default, the minimum contact was replaced
 by a value chosen on other matches, and the other constants were re-examined on other matches (the
 re-examination above): none of the alternatives passed, and each moved the mean by at most 0.002.
-The final version was frozen before it was scored on the window; it was scored once afterwards, for
+v31 was frozen before it was scored on the window; it was scored once afterwards, for
 information only (Section~5).
 
 % ---------------------------------------------------------------- 4
@@ -345,21 +400,58 @@ ball-status fields of official position data.}
 tracking only):
 
 \begin{center}\small
-\begin{tabular}{@{}l r r r@{}}
+\begin{tabular}{@{}l r r r r@{}}
 \toprule
-\st{Check} & \st{v27} & \st{v30} & \st{v31 (final)} \\
+\st{Check} & \st{v27} & \st{v30} & \st{v31} & \st{v35c (submitted)} \\
 \midrule
-possessions (mean length) & 209 (15.9\,s) & 242 (13.8\,s) & 284 (11.8\,s) \\
-possessions shorter than 2\,s & 7\% & 13\% & 16\% \\
-graded frames dead & 47.7\% & 47.5\% & 47.5\% \\
-dead inside tagged build-up, progression and transition phases & 9.2\% & 8.7\% & 8.7\% \\
-dead inside the 3\,s before a tagged set piece & 94.5\% & 94.6\% & 94.6\% \\
-same side as a tagged phase, where we say the ball is alive & 84.2\% & 83.3\% & 82.2\% \\
+possessions (mean length) & 209 (15.9\,s) & 242 (13.8\,s) & 284 (11.8\,s) & 346 (9.6\,s) \\
+possessions shorter than 2\,s & 7\% & 13\% & 16\% & 19\% \\
+graded frames dead & 47.7\% & 47.5\% & 47.5\% & 47.6\% \\
+dead inside tagged build-up, progression and transition phases & 9.2\% & 8.7\% & 8.7\% & 11.3\% \\
+dead inside the 3\,s before a tagged set piece & 94.5\% & 94.6\% & 94.6\% & 91.7\% \\
+same side as a tagged phase, where we say the ball is alive & 84.2\% & 83.3\% & 82.2\% & 78.4\% \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-Home share of alive time is 63\%. Phases are not possessions (a phase can outlast several changes of
+\st{The submitted version, v35c: its rule, and why we overrode it.} Its rule
+(\code{calib/learned\_c\_rule.md}) was committed before any v35c number existed; the decoding
+setting was fixed in advance (v31's own), so nothing was selected. Held-out means that each
+Metrica/DFL match is predicted by a model trained on the other nine, on degraded balls (three
+seeds), against v31 on the same balls (v31: 0.462 there).
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}L l c@{}}
+\toprule
+\st{Condition} & \st{Result} & \st{Pass} \\
+\midrule
+1. mean held-out gain $\geq+0.020$ & $+0.119$ & yes \\
+2. gain $>0$ on at least 8 of 10 matches & 10 of 10 ($+0.072$ to $+0.145$) & yes \\
+3. gain $>0$ within Metrica and within DFL & $+0.142$ and $+0.109$ & yes \\
+4/4b. three-group mean $\geq+0.005$; SkillCorner $\geq-0.005$ & $+0.086$; $+0.008$ (13 of 19) & yes \\
+5. label-free checks on this match (table above) & bound on $<2$\,s possessions 37.4\% & yes \\
+6. numpy inference equals LightGBM & max.\ difference 0.0 & yes \\
+7a. possessions v35c/v31 on this match within the public range $\pm10\%$ & 1.218 (346/284); public 0.969--1.062, bound 1.168 & \textbf{no} \\
+7b. share of frames changed from v31 within the public range $\pm5$ points & 0.149; public 0.081--0.155 & yes \\
+8. stress: extra ball gaps in live play up to this match's 9.2\% & $+0.115$ (Metrica $+0.141$, DFL $+0.103$) & yes \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The rule said that v31 stays if any condition fails, and that no further attempt follows. After
+reading all of these results, the team decided to submit v35c anyway
+(\code{calib/learned\_c\_override.md}, 17 November about 23:50 UTC+4), after three independent
+reviews found no rule it breaks. The reason is the team's objective, a high rank: on balls like
+this match's the classifier gained on every public match, also with live ball gaps, and the one
+failed condition is a guard we set ourselves, not evidence of a loss. The evidence against it:
+on this match it outputs 22\% more possessions than v31, more than on any tested match, so the
+held-out gains do not cover its behaviour here; its gain on SkillCorner is small ($+0.008$); and
+its agreement with the tagged phase sides is lower (78.4\% against 82.2\%). An independent review
+estimated the chance that v35c beats v31 on this match at about 0.65. This was the seventh
+decision on the same ten matches in two days (v32--v35c and the override); the gains above are not
+adjusted for that.
+
+Home share of alive time is 63\% for v31 and 60\% for v35c. Phases are not possessions (a phase can outlast several changes of
 side), so the side agreement is a sanity bound, not a target; the official baseline scores 67\% on it.
 
 \st{On the public window, for information only} (17 true possessions; never used to choose v31):
@@ -372,19 +464,37 @@ side), so the side agreement is a sanity bound, not a target; the official basel
 \code{baseline\_smooth50} (official floor) & 0.6207 & 0.3256 & 26 \\
 ours, v27 & 0.9010 & 0.5143 & 11 \\
 ours, v30 & 0.9089 & 0.5286 & 11 \\
-ours, v31 (final; scored after it was frozen) & 0.9021 & 0.5375 & 15 \\
+ours, v31 (scored after it was frozen) & 0.9021 & 0.5375 & 15 \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 With 17 possessions the segment-bootstrap intervals of our versions overlap almost entirely (about
 0.31 to 0.72), so the window cannot rank them; the other matches above are the better guide.
+The learned versions (v35, v35c) were never scored on the window, before or after any decision.
 
 % ---------------------------------------------------------------- 6
 \section{Limitations, and what we would do with more time}
 
 \begin{itemize}
-\item \st{The lost ball is the largest loss.} On DFL, removing the ball down to the competition's 59\%
+\item \st{Transfer of the classifier is the largest risk.} v35c outputs 22\% more possessions than
+v31 on this match, against at most 6\% on the public matches, so its behaviour here lies outside
+what was tested. The degradation changes only the ball, not the players' tracking; the stress test
+puts its gaps at random, while real gaps come from occlusion at duels and contacts. Known defects,
+not fixed because a fix needs retraining: the feature \code{area} has the wrong team-swap rule
+(signal lost, no leakage); SkillCorner's halves and kick-offs come from its labels in the check;
+the Smart Tagging terms enter the classifier's decoder unscaled and untested on public data
+(without them v35 gives 384 possessions instead of 382, so they are not the cause of the extra
+possessions); frames outside the half blocks are decoded through. A review after the decision
+found one more: the running share divides the runners by all player slots, not by the tracked
+players, and this match has more slots (48) than any training match (26--40), so the classifier
+sees its play as about a quarter quieter than the quietest training match. In a diagnostic that
+decided nothing, putting these four inputs on the DFL scale lowered v35c's possessions here only
+from 346 to 339, so this explains a small part of the extra possessions. Player speeds come from
+the tracker here and from positions in training; their distributions were not compared.
+\emph{Next:} divide by tracked players, degrade the player tracking too, and train on labels of the
+same kind as the competition's.
+\item \st{The lost ball is the largest loss for v31.} On DFL, removing the ball down to the competition's 59\%
 visibility lowers v31 from 0.544 to 0.409. When the ball is missing we only hold the last state; filling short gaps with a straight line and placing hand-overs inside gaps changed nothing on other matches (Section~3), because the missing information is not in the tracking.
 \emph{Next:} a ball-carrier model learned from other matches' tracking (who is pressed, where the
 team is running), and the aligned broadcast feed as a second ball observer.
@@ -412,14 +522,26 @@ change, not the competition score.
 \begin{tcolorbox}[enhanced,colback=panel,colframe=rule,boxrule=0.5pt,arc=2pt,left=6pt,right=6pt,
   top=4pt,bottom=4pt,fontupper=\small\ttfamily]
 pip install -r requirements-possession.txt\hfill\textrm{\color{muted}\# Python 3.12 or newer}\\
-python make\_submission.py --team "Más Bueno"\hfill\textrm{\color{muted}\# about 15\,s, deterministic}\\
+python make\_submission.py --team "Más Bueno"\hfill\textrm{\color{muted}\# about 20\,s, deterministic}\\
 python evaluation/validate\_submission.py "evaluation/results/Más Bueno.csv"
 \end{tcolorbox}
 
 Data go in \code{./data} as described in \code{DATA.md} (or \code{MTAH\_DATA\_DIR}). The run is
 deterministic: the same data give a byte-identical file, SHA-256
+\code{ad4c1503e2ff5861d3e6dbeacd30b143efbae75f25c2390e4f0afbf45b2a5b01} (v35c, pinned numpy 2.5.0 /
+pandas 3.0.3). It reads the trees from \code{calib/learned\_model.json} (SHA-256
+\code{5d85d398\ldots{}7de201}) and needs no LightGBM. With \code{learned\_emissions = False} in
+\code{possession/model.py} the same command gives v31's file,
 \code{f34036f02e246b42f314e1de70d7d6b1cc15aca906d65a686d6963a32604de2a}, reproduced on two machines
-and with two numpy/pandas versions (pinned numpy 2.5.0 / pandas 3.0.3, and 2.3.5 / 3.0.0).
+and with two numpy/pandas versions.
+
+\st{Re-training} (public data only; \code{requirements-train.txt}: LightGBM 4.7.0, Python 3.14, Linux;
+\code{hpc/learned.pbs}): \code{FIXED\_INDEX=8 python -m possession.learned\_eval build}, then
+\code{select}, \code{fixed}, \code{stress} and \code{final}; \code{final} trains on all ten matches
+and writes \code{calib/learned\_model.json} with v31's decoding setting. The degradation target is
+rebuilt label-free by \code{python -m possession.degrade target}. LightGBM's deterministic mode is
+on, but its output can differ across versions, compilers and machines, so a re-trained model may
+differ in the last bits; the submission depends only on the committed file.
 
 The validation is reproducible from public data only. \code{possession/validate.py} scores the current
 decoder on one match; \code{possession/grid.py} with \code{grid\_select.py}, \code{three\_group.py} and
@@ -433,8 +555,20 @@ result file is committed under \code{calib/}, and \code{python docs/figures.py} 
 The code was written with the help of an LLM coding assistant (Claude Code, by Anthropic). Its
 program runs on our machine but its language model runs on Anthropic's servers, so what it reads is
 sent there. We did not give it the match data files, the video, or extracts of them: it saw file and
-folder names and the summary output our scripts print (counts, shares and scores). It also read the
-public material: this repository, including the public 5-minute ground truth, and the public data of
-other matches (Section~3). The submitted pipeline contains no language model and calls no service.
+folder names and the summary output our scripts print (counts, shares and scores). That summary
+output included the 17 aggregate statistics of this match's tracking in
+\code{calib/domain\_target.json} (Section~1.6) and a summary of its missing ball frames (shares and
+rates, no frame indices); sub-agents of the same assistant used those 17 numbers to fit the
+degradation of the public balls and otherwise worked on public data only. It also read the
+public material: this repository, including the public 5-minute ground truth, the public data of
+other matches (Section~3), and the public READMEs of other teams' repositories, which gave us the
+idea to try a learned classifier; we used none of their code. Training on public data ran on a
+university computing cluster; the competition data stayed on our own machine. The submitted
+pipeline contains no language model and calls no service.
+
+\st{Licences and credits.} DFL/Sportec open data: Bassek et al.\ 2025, \emph{Scientific Data},
+doi:10.1038/s41597-025-04505-y, CC BY 4.0 (we converted it with kloppy and degraded its ball).
+SkillCorner open data: MIT. Metrica Sports sample data: \url{github.com/metrica-sports/sample-data}.
+LightGBM: MIT.
 
 \end{document}

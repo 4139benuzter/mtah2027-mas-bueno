@@ -326,6 +326,8 @@ def cmd_final(args):
     names = fine_names()
     table = [scores("excl_" + m, m) for m in names]          # leave-one-match-out predictions
     i, J = pick(table)
+    if FIXED is not None:                                     # v35c: FIXED_INDEX=8, v31's own setting
+        i = int(FIXED)                                        # (calib/learned_c_rule.md); nothing picked
     cfg = GRID[i]
     print("decode on all ten (leave-one-out predictions):", cfg, "J {:.4f}".format(J[i]),
           "v31 {:.4f}".format(np.mean([t["v31"] for t in table])))

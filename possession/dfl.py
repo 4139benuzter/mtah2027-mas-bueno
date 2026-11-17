@@ -1,4 +1,4 @@
-"""DFL / Sportec open data as a VALIDATION set from other matches (never used to choose anything).
+"""DFL / Sportec open data as labelled OTHER matches (validation, choosing v31's settings, training the v35c classifier).
 
 Bassek et al. (2025), "An integrated dataset of spatiotemporal and event data in elite soccer",
 Scientific Data, doi:10.1038/s41597-025-04505-y; files on figshare (article 28196177), licence

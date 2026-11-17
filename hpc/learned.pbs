@@ -1,0 +1,21 @@
+#!/bin/bash
+# v35c frame model (calib/learned_rule.md, calib/learned_c_rule.md): features of every public match
+# and degradation seed, nested leave-one-match-out test, final model on all ten matches, export to
+# calib/learned_model.json with v31's decoding setting GRID[8]. Public data only.
+#   qsub -v MTAH_EXTERNAL=$HOME/mtah2027-external hpc/learned.pbs
+# MTAH_EXTERNAL holds the Metrica sample matches and the converted DFL and SkillCorner .npz files.
+#PBS -N mtah_learned
+#PBS -q cpuq
+#PBS -l select=1:ncpus=64:mem=96gb
+#PBS -l walltime=01:30:00
+#PBS -j oe
+set -euo pipefail
+cd "$PBS_O_WORKDIR"
+module load "${PY_MODULE:-python/3.14.0-gcc-12.5.0-4km4ttx}"
+source "${VENV:-$HOME/mtah-train}/bin/activate"      # pip install -r requirements-train.txt
+export LGB_THREADS=64 FIXED_INDEX=8
+python -m possession.learned_eval build  --jobs 48
+python -m possession.learned_eval select --jobs 48
+python -m possession.learned_eval fixed               # held-out gain of GRID[8] (conditions 1-4b)
+python -m possession.learned_eval stress --jobs 30    # condition 8
+python -m possession.learned_eval final  --jobs 48    # export with decode = GRID[8]

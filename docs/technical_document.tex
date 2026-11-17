@@ -262,12 +262,13 @@ first set during development (below). Best held-out gain $+0.002$ against a bar 
 \item \st{Independent check} (\code{calib/skillcorner\_rule.md}): on SkillCorner v31 is $0.021$ below v30
 (95\% interval $-0.026$ to $-0.016$). The rule then re-ran the selection with three equally weighted
 groups; its pick was v31 itself. Section~5 explains the conflict.
-\item \st{Last round, new logic} (\code{calib/v32\_rule.md}): 162 combinations of four new rules
+\item \st{New logic, round 1} (\code{calib/v32\_rule.md}): 162 combinations of four new rules
 (dead-ball probability when the ball is lost; folding short same-side stoppages; folding sub-second
 possessions inside the other side's play or just before a stoppage), on Metrica and SkillCorner.
 The pick (fold possessions under 1\,s inside the other side's play) was the same in all 22 folds and
 helped 21 of 22 matches, but its held-out gain was $+0.0092$ against a bar of $+0.010$. \textbf{v31
 was kept.} Lowering the dead-ball probability when the ball is lost hurt in both groups.
+\item \st{New logic, round 2: the lost ball} (\code{calib/v33\_rule.md}): straight-line filling of ball gaps up to 0.5--2\,s, and moving a change of side that follows a ball gap to the middle of the gap (12 combinations, ball as recorded only, since the artificial gaps are far shorter than the competition's real ones). Every held-out pick was v31 itself and no combination moved the mean by more than 0.0012: \textbf{v31 was kept.}
 \end{itemize}
 
 \st{The public 5-minute window: what happened.} It was used to confirm alignment and file format and
@@ -384,7 +385,7 @@ With 17 possessions the segment-bootstrap intervals of our versions overlap almo
 
 \begin{itemize}
 \item \st{The lost ball is the largest loss.} On DFL, removing the ball down to the competition's 59\%
-visibility lowers v31 from 0.544 to 0.409. When the ball is missing we only hold the last state.
+visibility lowers v31 from 0.544 to 0.409. When the ball is missing we only hold the last state; filling short gaps with a straight line and placing hand-overs inside gaps changed nothing on other matches (Section~3), because the missing information is not in the tracking.
 \emph{Next:} a ball-carrier model learned from other matches' tracking (who is pressed, where the
 team is running), and the aligned broadcast feed as a second ball observer.
 \item \st{Short possessions.} With the ball as recorded, v31 outputs 58--74\% as many possessions as
@@ -423,7 +424,7 @@ and with two numpy/pandas versions (pinned numpy 2.5.0 / pandas 3.0.3, and 2.3.5
 The validation is reproducible from public data only. \code{possession/validate.py} scores the current
 decoder on one match; \code{possession/grid.py} with \code{grid\_select.py}, \code{three\_group.py} and
 \code{sc\_check.py} repeat the selections of Section~3 (Linux; the DFL conversion needs kloppy 3.19.1);
-\code{possession/bench.py} with \code{select\_v32.py} repeat the last round (Windows or Linux). Every
+\code{possession/bench.py} with \code{select\_v32.py}, and \code{bench\_v33.py} with \code{select\_v33.py}, repeat the two rounds of new logic (Windows or Linux). Every
 result file is committed under \code{calib/}, and \code{python docs/figures.py} redraws Figure~2 from them.
 
 % ---------------------------------------------------------------- 8
